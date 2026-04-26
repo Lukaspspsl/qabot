@@ -1,0 +1,17 @@
+{
+  "name": "qabot",
+  "owner": {
+    "name": "Lukas Pospisil",
+    "email": "lukas.pospisil@strv.com"
+  },
+  "plugins": [
+    {
+      "name": "qabot",
+      "source": ".",
+      "description": "QA orchestrator: plan, codegen, run, triage, sync.",
+      "version": "0.1.0",
+      "category": "testing",
+      "tags": ["qa", "playwright", "testing"]
+    }
+  ]
+}

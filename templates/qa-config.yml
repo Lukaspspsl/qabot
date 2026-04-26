@@ -1,0 +1,94 @@
+project:
+  name: ""
+  github_repo: ""              # org/repo — used by sync, triage, ci
+  jira:
+    url: ""                    # https://myorg.atlassian.net
+    project_key: ""            # PROJ
+    ready_for_qa_status: "Ready for QA"
+
+tc_id:
+  format: "TC-{DOM}-{X}.{Y}.{Z}"   # change prefix or structure here
+  domains:
+    web: WEB
+    mobile: MOB
+    backend: BE
+    non_functional: NF
+
+paths:
+  cases: qa/cases
+  docs: qa/docs
+  tests: qa/tests
+  sync_log: qa/sync-log.md
+  reports: qa/reports
+
+gen:
+  playwright:
+    enabled: false
+    root: qa/tests/web
+    base_url: ""
+    shards: 1                 # CI matrix fan-out (1 = no sharding). Codegen emits workers + matches CI shard env
+    workers: 1                # local parallel workers per shard
+  maestro:
+    enabled: false
+    root: qa/tests/mobile
+    android_app_id: ""        # Android package name (com.example.app)
+    ios_app_id: ""            # iOS bundle ID (com.example.app)
+  xcui:
+    enabled: false
+    root: qa/tests/ios
+    scheme: ""
+  api:
+    enabled: false
+    root: qa/tests/api
+    framework: supertest        # supertest | pytest | rest-assured
+    base_url: ""
+  a11y:
+    enabled: false              # emits axe-core Playwright specs for type: accessibility TCs
+    root: qa/tests/a11y         # separate root — won't clash with gen.playwright.root
+    wcag_level: AA              # A | AA | AAA
+  vrt:
+    enabled: false              # emits Playwright toHaveScreenshot specs for type: visual TCs
+    root: qa/tests/vrt          # separate root so snapshots don't clash with functional specs
+    threshold: 0.2              # max pixel diff ratio (0.0-1.0) per screenshot
+    update_baselines: false     # if true, codegen emits --update-snapshots reminder in README
+  performance:
+    enabled: false              # emits perf specs for type: performance TCs
+    root: qa/tests/perf
+    framework: lighthouse       # lighthouse | k6
+    budget_json: ""             # optional path to Lighthouse budgets.json / k6 thresholds file
+  security:
+    enabled: false              # emits scan specs for type: security TCs
+    root: qa/tests/security
+    framework: zap              # zap | nuclei
+    target_url: ""              # scan target; falls back to gen.playwright.base_url
+  espresso:
+    enabled: false              # Android instrumented tests
+    root: qa/tests/android
+    package: ""                 # app package id (com.example.app)
+
+adversarial:
+  base_url: ""                 # sandbox only — never production
+
+reports:
+  retention_days: 30           # prune qa/reports/ older than N days on each /qa-run (0 = keep forever)
+
+notifications:
+  slack_webhook: ""            # https://hooks.slack.com/... — posts /qa-run summary + /qa-sync PR URL
+  teams_webhook: ""            # https://outlook.office.com/webhook/... — same payload
+
+testrail:
+  enabled: false
+  url: ""                      # https://acme.testrail.io
+  project_id: 0                # numeric
+  suite_id: 0                  # optional, 0 for single-suite projects
+  # auth lives in a local .env (never committed):
+  #   TR_USER, TR_API_KEY, TR_PASSWORD (required for session-auth instances)
+
+models:
+  default: claude-sonnet-4-6
+  planner: ""                  # falls back to default
+  validator: codex             # falls back to default if Codex unavailable
+  codegen: ""
+  run_analysis: ""
+  heal: ""
+  sync: ""
