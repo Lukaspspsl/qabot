@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "description": "QA orchestrator for Claude Code: plan, generate, run, triage, and sync test cases across a project.",
   "author": {
-    "name": "Lukas Pospisil",
-    "email": "lukas.pospisil@strv.com"
+    "name": "Lukaspspsl",
+    "url": "https://github.com/Lukaspspsl"
   },
   "homepage": "https://github.com/Lukaspspsl/qabot",
   "repository": "git@github.com:Lukaspspsl/qabot.git",

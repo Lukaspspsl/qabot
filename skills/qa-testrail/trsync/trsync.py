@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-trsync — TestRail sync CLI for CellarHand QA
+trsync — TestRail sync CLI
 
 YAML/CSV test cases <-> TestRail Cloud/Server via API v2.
 Source of truth: your YAML/CSV files. TestRail is a projection.
@@ -87,7 +87,7 @@ class Config:
 
 
 class TestCase(BaseModel):
-    """Canonical YAML schema for CellarHand TCs.
+    """Canonical YAML schema for TCs.
 
     Steps and preconditions accept either plain strings (canonical) or dicts
     with an `action`/`content`/`step`/`text` key (legacy form, coerced to
