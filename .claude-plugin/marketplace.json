@@ -7,7 +7,10 @@
   "plugins": [
     {
       "name": "qabot",
-      "source": ".",
+      "source": {
+        "source": "github",
+        "repo": "Lukaspspsl/qabot"
+      },
       "description": "QA orchestrator: plan, codegen, run, triage, sync.",
       "version": "0.1.0",
       "category": "testing",
