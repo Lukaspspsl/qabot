@@ -2,19 +2,30 @@
 
 QA framework for Claude Code. One config file, approval gates between every phase, minimal console output. Designed for token efficiency — main context never reads test cases or specs directly.
 
-## Install (Claude Code Plugin)
+## Install
 
-Add the marketplace, then install:
+Clone the repo, bootstrap `/qa-init`, then let it distribute the rest:
 
 ```bash
-/plugin marketplace add Lukaspspsl/qabot
-/plugin install qabot@qabot
+# 1. Clone qabot somewhere permanent (e.g. ~/.qabot)
+git clone https://github.com/Lukaspspsl/qabot.git ~/.qabot
+
+# 2. Bootstrap — copy only qa-init so it's available as a skill
+cp -r ~/.qabot/skills/qa-init ~/.claude/skills/
 ```
+
+Then, in your target project, run:
+
+```bash
+/qa-init --from ~/.qabot
+```
+
+`/qa-init` will copy all remaining skills to `~/.claude/skills/`, optionally wire the hooks, and scaffold your project's `qa/` directory. All subsequent projects only need step 3 — skills are already global.
 
 Pin a release:
 
 ```bash
-/plugin install qabot@qabot@v0.1.0
+git clone --branch v0.1.0 https://github.com/Lukaspspsl/qabot.git ~/.qabot
 ```
 
 After install, `/qa` and all sub-skills (`/qa-plan`, `/qa-codegen`, `/qa-run`, `/qa-sync`, `/qa-triage`, `/qa-ci`, `/qa-explore`, `/qa-adversarial`, `/qa-init`) are available in any project.
@@ -41,16 +52,24 @@ No telemetry is collected unless you opt in.
 
 ## Quick Start
 
+**First project (after cloning qabot):**
 ```bash
-# 1. Scaffold — creates qa/ layout, .env.example, extensive .gitignore
+# Distributes all skills to ~/.claude/skills/, then scaffolds qa/
+/qa-init --from ~/.qabot
+```
+
+**Subsequent projects (skills already global):**
+```bash
+# Just scaffolds qa/ — no --from needed
 /qa-init
+```
 
-# 2. Fill in qa/qa-config.yml:
-#    - project.name, project.github_repo, project.jira.*
-#    - enable at least one framework under gen.*
-# 3. Place source docs in qa/docs/
-
-# 4. Run
+Then:
+```bash
+# Fill in qa/qa-config.yml:
+#   - project.name, project.github_repo, project.jira.*
+#   - enable at least one framework under gen.*
+# Place source docs in qa/docs/
 /qa
 ```
 
@@ -62,7 +81,7 @@ The orchestrator checks prerequisites, shows pipeline status, and routes you to 
 
 ### First Run
 
-Copy `templates/qa-config.yml` to your project root. Fill in the required fields:
+After `/qa-init` scaffolds your project, fill in `qa/qa-config.yml`:
 
 ```yaml
 project:
@@ -99,7 +118,7 @@ Each phase shows a gate before proceeding. Use `[f] full run` from the menu to c
 | Skill | Phase | What it does |
 |-------|-------|--------------|
 | `/qa` | — | Orchestrator — prereq checks, status, routing |
-| `/qa-init` | — | One-time scaffold — creates `qa/` dirs, copies config, writes `.gitignore` |
+| `/qa-init` | — | Bootstrap + scaffold — `--from <path>` distributes skills globally on first install; always creates `qa/` dirs, copies config, writes `.gitignore` |
 | `/qa-explore` | 0.5 | Browser-based live app discovery before planning |
 | `/qa-plan` | 1 | Generate TCs via Planner + Validator agent loop |
 | `/qa-codegen` | 2 | Generate Playwright / Maestro / XCUI automation |
@@ -184,20 +203,25 @@ Each skill receives a defined set of variables from the orchestrator and returns
 
 ```
 <project-root>/
-├── qa-config.yml
-├── qa/
-│   ├── cases/
-│   │   ├── <feature-group>/
-│   │   │   └── TC-WEB-1.1.1-short-title.yml
-│   │   └── test-plan.csv
-│   ├── docs/            # source docs for planning
-│   ├── reports/         # run-analysis-*.md, heal-*.md, results-*.json
-│   └── sync-log.md
-├── qa/tests/
-│   ├── web/             # Playwright (pages/, specs/, fixtures/, data/)
-│   ├── mobile/          # Maestro (suites/, flows/, subflows/, data/)
-│   └── ios/             # XCUI (Pages/, Tests/, Helpers/, Data/)
-└── .context/            # ephemeral — explore + adversarial artifacts
+├── .gitignore           # qa-init appends qa-specific ignore rules
+└── qa/
+    ├── qa-config.yml    # single config, read once by /qa
+    ├── cases/
+    │   ├── <feature-group>/
+    │   │   └── TC-WEB-1.1.1-short-title.yml
+    │   └── test-plan.csv
+    ├── docs/            # source docs for planning
+    ├── reports/         # run-analysis-*.md, heal-*.md, results-*.json
+    ├── sync-log.md
+    ├── templates/       # local copy of tc.yml for reference
+    ├── tests/
+    │   ├── web/         # Playwright (pages/, specs/, fixtures/, data/)
+    │   ├── mobile/      # Maestro (suites/, flows/, subflows/, data/)
+    │   └── ios/         # XCUI (Pages/, Tests/, Helpers/, Data/)
+    ├── .context/        # ephemeral — explore + adversarial artifacts
+    ├── .trsync/         # testrail mapping.json (per-clone state)
+    ├── .env             # creds — never committed
+    └── .env.example     # committed template
 ```
 
 ### Jira Integration

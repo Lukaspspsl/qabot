@@ -1,13 +1,95 @@
 ---
 name: qa-init
-description: One-time scaffold. Creates qa/ layout, copies qa-config.yml template, writes .env.example, seeds sync log, extends .gitignore. Idempotent.
+description: One-time scaffold. Optionally distributes qabot skills from a cloned repo to ~/.claude/skills/. Creates qa/ layout, copies qa-config.yml template, writes .env.example, seeds sync log, extends .gitignore. Idempotent.
 ---
 
-# /qa-init — Scaffold a qa-concise Project
+# /qa-init — Bootstrap + Scaffold
 
-One-time setup. Creates the full `qa/` directory layout, copies `qa-config.yml`, writes `.env.example`, seeds sync log, and writes an extensive `.gitignore`. Idempotent — safe to re-run.
+Two modes:
+
+1. **First install** — pass `--from <path>` pointing to a cloned qabot repo. Distributes all skills globally to `~/.claude/skills/`, optionally wires hooks, then scaffolds this project's `qa/` directory.
+2. **Already installed** — run without args. Scaffolds (or repairs) `qa/` only.
 
 Receives from orchestrator: nothing (qa-init runs before config exists).
+
+---
+
+## Step -1 — Distribute Framework (only if `--from <path>` provided)
+
+Parse `--from <path>` from invocation args. If absent, skip to Step 0.
+
+**Validate source:**
+```bash
+SRC="<resolved --from path>"
+[ -d "$SRC/skills/qa" ] || error "Not a qabot repo — missing skills/qa/"
+```
+
+**Distribute skills:**
+```bash
+SKILLS_DST="$HOME/.claude/skills"
+mkdir -p "$SKILLS_DST"
+
+for skill_dir in "$SRC"/skills/qa*/; do
+  skill_name=$(basename "$skill_dir")
+  if [ -d "$SKILLS_DST/$skill_name" ]; then
+    ask "  $skill_name already exists. Overwrite? [y/n]"
+    # n → skip this skill; y → overwrite
+  fi
+  cp -r "$skill_dir" "$SKILLS_DST/$skill_name"
+done
+```
+
+Show one line per installed skill:
+```
+  ✓ qa → ~/.claude/skills/qa
+  ✓ qa-init → ~/.claude/skills/qa-init
+  ...
+```
+
+**Optionally wire hooks:**
+```
+Wire qabot hooks into ~/.claude/settings.json?
+Enforces info-barrier (Agent A/B) and blocks destructive bash patterns.
+[y] yes  [n] skip
+```
+
+If yes, merge into `~/.claude/settings.json` under `hooks` — append only, never overwrite existing entries:
+```json
+{
+  "PreToolUse": [
+    {
+      "matcher": "Bash|WebFetch|Write|Edit|Read|Grep",
+      "hooks": [
+        { "type": "command", "command": "python3 <SRC>/hooks/pre_tool_use.py" }
+      ]
+    }
+  ],
+  "PostToolUse": [
+    {
+      "matcher": "*",
+      "hooks": [
+        { "type": "command", "command": "python3 <SRC>/hooks/post_tool_use.py" }
+      ]
+    }
+  ]
+}
+```
+
+Use the actual resolved `$SRC` path (not a variable) so the hook works from any project.
+
+**Summary after distribution:**
+```
+Framework distributed from: /path/to/cloned/qabot
+  Skills installed: qa, qa-init, qa-plan, qa-codegen, qa-run, qa-sync,
+                    qa-triage, qa-ci, qa-explore, qa-adversarial, qa-bug,
+                    qa-coverage, qa-retire, qa-testrail
+  Hooks wired: [yes | skipped]
+
+Skills are now global — subsequent projects only need /qa-init (no --from).
+Continuing with project scaffold...
+```
+
+---
 
 ## Step 0 — Detect Current State
 
@@ -23,6 +105,8 @@ qa/qa-config.yml already exists.
 [k] keep (just ensure dirs + gitignore)  [o] overwrite  [c] cancel
 ```
 
+---
+
 ## Step 1 — Create Directory Layout
 
 Everything under `qa/`. Never write qa-* files at project root (except `.gitignore`).
@@ -31,15 +115,15 @@ Everything under `qa/`. Never write qa-* files at project root (except `.gitigno
 mkdir -p qa/cases qa/docs qa/tests qa/reports qa/templates qa/.context qa/.trsync
 ```
 
+---
+
 ## Step 2 — Copy Canonical Templates
 
-Framework repo path resolved via skill location. Copy the two canonical templates into the consumer project so users can read / extend them without cloning qa-concise.
+Resolve framework source: `$SRC` if `--from` was provided, else two dirs up from this SKILL.md (i.e. the globally installed skill's parent).
 
 ```bash
-# Framework root = two dirs up from this SKILL.md
-FW_ROOT="$(dirname "$(dirname "$(realpath "$0")")")/.."  # pseudocode — resolve actually via skill metadata
+FW_ROOT="${SRC:-$(dirname "$(dirname "$(realpath "$0")")")}"
 cp "$FW_ROOT/templates/tc.yml" qa/templates/tc.yml
-# qa-config.yml: only copy if not keeping existing
 [ "$HAS_CONFIG" = "0" ] && cp "$FW_ROOT/templates/qa-config.yml" qa/qa-config.yml
 ```
 
@@ -51,6 +135,8 @@ Next: open qa/qa-config.yml and set:
   - project.jira.url, project.jira.project_key
   - gen.*.enabled (at least one framework)
 ```
+
+---
 
 ## Step 3 — Write `.env.example`
 
@@ -68,12 +154,16 @@ EOF
 
 Never overwrite existing `qa/.env.example` — if present, skip.
 
+---
+
 ## Step 4 — Seed Sync Log
 
 If `qa/sync-log.md` absent:
 ```bash
 printf 'last_sync: %s\n--- sync history ---\n' "$(date +%Y-%m-%d)" > qa/sync-log.md
 ```
+
+---
 
 ## Step 5 — Write Extensive `.gitignore`
 
@@ -123,7 +213,7 @@ qa/tests/**/.gradle/
 # --- /qa-concise ---
 ```
 
-Write to `<project-root>/.gitignore` (NOT `qa/.gitignore`). If the `# --- qa-concise ---` marker already exists, skip the whole block (already installed). Otherwise append.
+Write to `<project-root>/.gitignore` (NOT `qa/.gitignore`). If the `# --- qa-concise ---` marker already exists, skip the whole block. Otherwise append.
 
 **Committed by default** (do NOT add to .gitignore):
 - `qa/cases/**` — TC YAMLs
@@ -133,9 +223,11 @@ Write to `<project-root>/.gitignore` (NOT `qa/.gitignore`). If the `# --- qa-con
 - `qa/templates/`
 - `qa/.env.example`
 
+---
+
 ## Step 6 — Optional Framework Installs
 
-Read `qa/qa-config.yml` (if it was just copied, defaults are all `enabled: false` — skip). If any framework flipped on by the user before `/qa-init` runs, offer install:
+Read `qa/qa-config.yml` (if just copied, all `enabled: false` — skip). If any framework was pre-enabled, offer install:
 
 ### Playwright (`gen.playwright.enabled: true`)
 ```
@@ -155,6 +247,8 @@ Show command; do not install automatically (requires brew).
 ### XCUI (`gen.xcui.enabled: true`)
 Verify `xcodebuild -version`. Warn if missing.
 
+---
+
 ## Step 7 — Summary
 
 Print exactly:
@@ -171,10 +265,12 @@ qa-init complete.
 Next: fill qa/qa-config.yml required fields, then run /qa.
 ```
 
+---
+
 ## Rules
 
 - Never overwrite a file without explicit `[o] overwrite` confirmation.
 - Never commit `.env` or `.trsync/mapping.json` — enforced via `.gitignore`.
 - Never scaffold outside `qa/` except `.gitignore` at project root.
 - Never install framework deps without user `[y]`.
-- Idempotent: re-running after first init must be a no-op (except updating `last_sync` not touched).
+- Idempotent: re-running after first init must be a no-op (except distribution step, which checks before overwriting).

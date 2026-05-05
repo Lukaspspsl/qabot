@@ -9,7 +9,7 @@
       "name": "qabot",
       "source": {
         "source": "github",
-        "repo": "Lukaspspsl/qabot"
+        "repo": "https://github.com/Lukaspspsl/qabot"
       },
       "description": "QA orchestrator: plan, codegen, run, triage, sync.",
       "version": "0.1.0",
