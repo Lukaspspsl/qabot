@@ -1,23 +1,23 @@
 # qabot
 
-QA framework for Claude Code. One config file, approval gates between every phase, minimal console output. Designed for token efficiency — main context never reads test cases or specs directly.
+QA framework for Claude Code covering all the stages from analysis and plan, to test case generation, automation scripting and runner. One config file, approval gates between every phase, minimal console output.
 
 ## Install
 
 Clone the repo, bootstrap `/qa-init`, then let it distribute the rest:
 
 ```bash
-# 1. Clone qabot somewhere permanent (e.g. ~/.qabot)
-git clone https://github.com/Lukaspspsl/qabot.git ~/.qabot
+# 1. Clone qabot somewhere permanent (e.g. ~/qabot)
+git clone https://github.com/Lukaspspsl/qabot.git
 
 # 2. Bootstrap — copy only qa-init so it's available as a skill
-cp -r ~/.qabot/skills/qa-init ~/.claude/skills/
+cp -r ~/qabot/skills/qa-init ~/.claude/skills/
 ```
 
-Then, in your target project, run:
+Then, in your target project, run Claude and use init skill:
 
-```bash
-/qa-init --from ~/.qabot
+```
+/qa-init
 ```
 
 `/qa-init` will copy all remaining skills to `~/.claude/skills/`, optionally wire the hooks, and scaffold your project's `qa/` directory. All subsequent projects only need step 3 — skills are already global.
@@ -41,43 +41,19 @@ The bundled `pre_tool_use.py` hook reads block patterns from env. All optional:
 | `QABOT_WORKSPACE` | Absolute path; warn on writes outside this root | `/Users/me/proj/qa` |
 | `QABOT_AGENT_ROLE` | `A` or `B`; enforces info-barrier during codegen | `A` |
 
-### Telemetry (off by default)
+### Observability layer (off by default)
 
 `hooks/send_event.py` exists for opt-in observability but is **not wired** in `hooks/hooks.json`. To enable:
 
 1. Run a local obs server (defaults to `http://localhost:4000`); override with `OBS_SERVER_URL`.
 2. Add a `PostToolUse` entry calling `python3 ${CLAUDE_PLUGIN_ROOT}/hooks/send_event.py --event-type tool_use` in `hooks/hooks.json`.
 
-No telemetry is collected unless you opt in.
 
-## Quick Start
-
-**First project (after cloning qabot):**
-```bash
-# Distributes all skills to ~/.claude/skills/, then scaffolds qa/
-/qa-init --from ~/.qabot
-```
-
-**Subsequent projects (skills already global):**
-```bash
-# Just scaffolds qa/ — no --from needed
-/qa-init
-```
-
-Then:
-```bash
-# Fill in qa/qa-config.yml:
-#   - project.name, project.github_repo, project.jira.*
-#   - enable at least one framework under gen.*
-# Place source docs in qa/docs/
-/qa
-```
+## How to Use
 
 Everything qa-related nests under `qa/` in your project. Only `qa/cases/`, `qa/tests/`, `qa/qa-config.yml`, `qa/sync-log.md`, `qa/templates/` are committed by default — reports, .env, discovery artifacts, and testrail state are local-only.
 
 The orchestrator checks prerequisites, shows pipeline status, and routes you to the right phase automatically. If `qa/qa-config.yml` is missing, `/qa` auto-routes to `/qa-init`.
-
-## How to Use
 
 ### First Run
 
@@ -98,6 +74,8 @@ gen:
 ```
 
 Run `/qa` — it auto-routes to `/qa-plan` if no test cases exist yet.
+
+`/qa` is main orchestrator, use it to run dedicated skills.
 
 ### Phase Flow
 
