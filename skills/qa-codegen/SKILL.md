@@ -23,6 +23,8 @@ Pass `RESET_STRATEGY` + endpoints to Agent A. Page object emits `resetState()`; 
 
 ## Info Barrier (all frameworks — preserves assertion independence)
 
+**TC immutability:** set `QABOT_TC_IMMUTABLE=1` in env for both Agent A and Agent B spawns. Hook (`pre_tool_use.py`) blocks any Write/Edit on existing `qa/cases/**/*.yml` except mutable fields (`jira_key`, `automation_id`, `automation_status`). Backfill step below stays compatible.
+
 **Agent A** (spawn with `$MODELS.codegen`):
 - Input: all `$CASES/**/*.yml` with `expected_result` field **redacted** (`"REDACTED"`)
 - Task: write complete files with `# ASSERT_HERE: {TC_ID}` markers

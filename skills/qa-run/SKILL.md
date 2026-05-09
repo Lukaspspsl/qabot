@@ -60,7 +60,11 @@ npx playwright test 2>&1 | tee $REPORTS/run-output-web.txt
 ```
 Config in `playwright.config.ts` — JSON reporter to `$REPORTS/results-web.json`.
 
-**Sandbox auto-detect:** if output matches `bootstrap_check_in.*Permission denied|mach.*denied|sandbox.*denied`, set session flag `SANDBOX_OFF=1`. Re-run with `dangerouslyDisableSandbox: true` for all subsequent Playwright/Chromium Bash calls in this run. Log once: `Sandbox disabled — Chromium IPC blocked.`
+**Sandbox auto-detect:** if output matches `bootstrap_check_in.*Permission denied|mach.*denied|sandbox.*denied`, prompt user:
+  > Sandbox denied during Chromium launch. Disable sandbox for ONE retry of this command? [y/n]
+On `y`: re-run THIS command only with `dangerouslyDisableSandbox: true`. Do not set session flag. Do not apply to subsequent calls. Each new sandbox failure must re-prompt.
+On `n` / no response: surface error to user, abort run.
+Never auto-flip. Never persist across calls.
 
 **Maestro:**
 ```bash

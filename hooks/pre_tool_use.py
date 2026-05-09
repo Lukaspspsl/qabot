@@ -75,6 +75,38 @@ def check_write(tool_input: dict):
         os.environ["QABOT_EVENT_STATUS"] = "WARN"
 
 
+TC_IMMUTABLE = os.environ.get("QABOT_TC_IMMUTABLE", "") == "1"
+TC_PATH_PATTERN = re.compile(r"/qa/cases/.+\.ya?ml$")
+TC_MUTABLE_FIELDS = {"jira_key", "automation_id", "automation_status"}
+
+
+def check_tc_immutability(tool_name: str, tool_input: dict):
+    """Block edits to existing TC YAMLs except mutable fields."""
+    if not TC_IMMUTABLE:
+        return
+    if tool_name not in ("Write", "Edit"):
+        return
+    file_path = tool_input.get("file_path", "")
+    if not TC_PATH_PATTERN.search(file_path):
+        return
+    if tool_name == "Write" and os.path.exists(file_path):
+        block(f"TC immutability: blocked overwrite of existing TC {file_path}")
+    if tool_name == "Edit":
+        old = tool_input.get("old_string", "")
+        new = tool_input.get("new_string", "")
+        def is_mutable_only(s: str) -> bool:
+            lines = [ln.strip() for ln in s.splitlines() if ln.strip()]
+            if not lines:
+                return False
+            for ln in lines:
+                key = ln.split(":", 1)[0].strip()
+                if key not in TC_MUTABLE_FIELDS:
+                    return False
+            return True
+        if not (is_mutable_only(old) and is_mutable_only(new)):
+            block(f"TC immutability: blocked edit of {file_path} — only {sorted(TC_MUTABLE_FIELDS)} mutable")
+
+
 def extract_file_path(tool_name: str, tool_input: dict) -> str:
     """Extract the file path being accessed from tool input."""
     if tool_name == "Read":
@@ -116,6 +148,7 @@ def main():
     tool_input = payload.get("tool_input", {})
 
     check_information_barrier(tool_name, tool_input)
+    check_tc_immutability(tool_name, tool_input)
 
     if tool_name == "Bash":
         check_bash(tool_input)
