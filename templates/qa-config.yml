@@ -71,6 +71,13 @@ gen:
 adversarial:
   base_url: ""                 # sandbox only — never production
 
+stagehand:
+  enabled: false               # opt-in — Stagehand AI fallback for broken Playwright locators
+  env: LOCAL                   # LOCAL | BROWSERBASE
+  cache_path: qa/.stagehand-cache.json   # local only — NOT committed (project-specific DOM resolutions)
+  fallback_on_heal: true       # trigger only when Playwright heal fails or hits 3-cycle cap
+  model: claude-sonnet-4-6     # model used by Stagehand for locator resolution
+
 reports:
   retention_days: 30           # prune qa/reports/ older than N days on each /qa-run (0 = keep forever)
 
