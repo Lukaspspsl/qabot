@@ -180,24 +180,24 @@ Output: `Coverage: {N} TCs — WEB:{w} MOB:{m} BE:{b} NF:{n} | Automated: {a}%`
 │       ├── pre_tool_use.py
 │       └── post_tool_use.py
 └── qa/
-    ├── qa-config.yml        # single config, read once by /qa
-    ├── cases/               # TC YAMLs — committed
-    ├── tests/               # specs/flows — committed
-    ├── docs/                # source docs — local by default
+    ├── qa-config.yml        # local workflow config — git-ignored by default
+    ├── cases/               # TC YAMLs — git-ignored by default
+    ├── tests/               # specs/flows — committed (only committed qa/ subdir)
+    ├── docs/                # source docs — local
     ├── reports/             # run analysis, heal logs — local
-    ├── templates/           # local copy of tc.yml for reference
-    ├── sync-log.md          # committed; tracks last_sync date
+    ├── templates/           # reference templates — local
+    ├── sync-log.md          # sync state — local
     ├── .context/            # ephemeral discovery + adversarial artifacts
     ├── .trsync/             # testrail mapping.json (per-clone state)
     ├── .env                 # TestRail / API creds — never committed
-    └── .env.example         # committed template
+    └── .env.example         # cred template — local
 ```
 
-**Committed by default:** `qa/cases/**`, `qa/tests/**`, `qa/qa-config.yml`, `qa/sync-log.md`, `qa/templates/`, `qa/.env.example`, `.claude/settings.json`.
+**Committed by default:** `qa/tests/**` (specs/flows), `.claude/settings.json` (hook wiring).
+
+**Git-ignored by default (opt-in by removing from .gitignore):** everything else under `qa/` — config, cases, docs, reports, templates, sync log, cred files.
 
 **Git-ignored (reinstall per developer):** `.claude/skills/qa*/`, `.claude/hooks/pre_tool_use.py`, `.claude/hooks/post_tool_use.py`.
-
-**Everything else local.** Reports, discovery artifacts, mapping state, source docs, framework outputs.
 
 ## Install Model
 

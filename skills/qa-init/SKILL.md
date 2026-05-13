@@ -194,7 +194,7 @@ printf 'last_sync: %s\n--- sync history ---\n' "$(date +%Y-%m-%d)" > qa/sync-log
 
 Idempotent append. Read existing `.gitignore` (if present); append only lines not already present.
 
-**Principle:** skills + hooks are reinstalled per developer — git-ignored. Only test scripts + case YAMLs + config + sync log + templates commit. `.claude/settings.json` IS committed so teammates get hook wiring without reinstall.
+**Principle:** everything under `qa/` is ignored by default except `qa/tests/` (the actual test specs). Config, cases, docs, reports, templates, state — all local. Users opt-in to committing more by removing lines from `.gitignore`. `.claude/settings.json` IS committed so teammates get hook wiring without reinstall.
 
 ```
 # --- qa-concise ---
@@ -203,41 +203,27 @@ Idempotent append. Read existing `.gitignore` (if present); append only lines no
 .claude/hooks/pre_tool_use.py
 .claude/hooks/post_tool_use.py
 
-# Secrets
-qa/.env
-qa/.env.*
-!qa/.env.example
+# Everything under qa/ is local by default — only tests/ is committed
+qa/
+!qa/tests/
+!qa/tests/**
 
-# Local state (per-clone)
-qa/.trsync/
-qa/.context/
-
-# Reports (run analysis, heal logs, results json — never committed)
-qa/reports/
-
-# Source docs — commented default. Uncomment if your team does not share these.
-# qa/docs/
-
-# Node / Playwright
-node_modules/
+# Exclude test runner build artifacts from qa/tests/
 qa/tests/**/.playwright/
 qa/tests/**/playwright-report/
 qa/tests/**/test-results/
 qa/tests/**/blob-report/
-
-# Maestro
 qa/tests/**/.maestro/
-
-# Stagehand (local cache — not committed, each user builds their own)
-qa/.stagehand-cache.json
-
-# XCUI / Android
 qa/tests/**/build/
 qa/tests/**/DerivedData/
 qa/tests/**/.gradle/
 *.xcuserstate
 
-# Editor / OS
+# Stagehand (local cache — each user builds their own)
+qa/.stagehand-cache.json
+
+# Node / OS
+node_modules/
 .DS_Store
 *.log
 *.swp
@@ -248,18 +234,19 @@ qa/tests/**/.gradle/
 
 Write to `<project-root>/.gitignore` (NOT `qa/.gitignore`). If the `# --- qa-concise ---` marker already exists, skip the whole block. Otherwise append.
 
-**Committed by default** (do NOT add to .gitignore):
-- `qa/cases/**` — TC YAMLs
-- `qa/tests/**` — spec / flow / test files (but NOT build outputs above)
-- `qa/qa-config.yml`
-- `qa/sync-log.md`
-- `qa/templates/`
-- `qa/.env.example`
+**Committed by default:**
+- `qa/tests/**` — spec / flow / test files (excluding build outputs above)
 - `.claude/settings.json` — hook wiring; teammates inherit this on clone
 
-**Git-ignored** (reinstall per developer):
-- `.claude/skills/qa*/` — qabot skills
-- `.claude/hooks/pre_tool_use.py`, `.claude/hooks/post_tool_use.py` — qabot hooks
+**Git-ignored by default (opt-in by removing from .gitignore):**
+- `qa/qa-config.yml` — local workflow config
+- `qa/cases/**` — TC YAMLs (can be committed if team wants shared test plan)
+- `qa/docs/` — source docs
+- `qa/reports/` — run analysis, heal logs
+- `qa/templates/` — reference templates
+- `qa/sync-log.md` — sync state
+- `qa/.env`, `qa/.env.example` — creds and cred templates
+- `.claude/skills/qa*/`, `.claude/hooks/*.py` — reinstall per developer
 
 ---
 
