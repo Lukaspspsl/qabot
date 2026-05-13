@@ -1,6 +1,6 @@
 ---
 name: qa-explore
-description: Live app discovery before planning. Crawls web (Playwright) or mobile (Maestro) to feed observed flows into qa-plan. Optional phase.
+description: Live app discovery before planning. Crawls web (web-app-auditor) or mobile to feed observed flows into qa-plan. Optional phase — prompted at Phase 0 boundary.
 ---
 
 # /qa-explore — Live App Discovery (Phase 0.5)
@@ -9,9 +9,13 @@ Receives from orchestrator: `$GEN`, `$DOCS`
 
 Optional — run before /qa-plan to feed planner with live app observations.
 
-**Modes:** `web` (default, Playwright) | `mobile` (Maestro). Invocation: `/qa-explore` for web, `/qa-explore --mobile` for mobile. If `--mobile` passed, skip to Mobile track below.
+**Modes:** `web` (default) | `mobile` (`--mobile` flag)
 
-## Step 0 — Prerequisites (web)
+---
+
+## Web Track (default)
+
+### Step 0 — Prerequisites
 
 Read `$GEN.playwright.base_url` as `$BASE_URL`. If empty: ask `> App base URL:`.
 
@@ -21,7 +25,7 @@ curl -s -m 3 -o /dev/null -w "%{http_code}" "$BASE_URL"
 
 If unreachable (000): `> App not responding at $BASE_URL — continue anyway? [y/n]`
 
-## Step 1 — Scope
+### Step 1 — Scope
 
 ```
 > Routes to focus on (Enter = full app):
@@ -29,9 +33,9 @@ If unreachable (000): `> App not responding at $BASE_URL — continue anyway? [y
 
 Blank → full app. Paths provided → restrict to those.
 
-## Step 2 — Spawn Discovery Agent
+### Step 2 — Spawn Discovery Agent
 
-Spawn `web-app-auditor` with:
+Spawn agent using subagent_type: `web-app-auditor` with:
 
 ```
 QA discovery mode — do NOT file bug reports. Build a structured map of live app behavior.
@@ -45,7 +49,7 @@ Capture:
 3. User flows — happy paths, auth barriers encountered
 4. Edge case signals — error states, empty states, disabled elements
 5. Console errors — JS errors, 4xx/5xx during navigation
-6. Teardown hooks — observe network tab for DELETE/reset endpoints (`/api/*/reset`, `DELETE /api/*`). List path, method, scope (per-resource | global). Do NOT call them.
+6. Teardown hooks — observe network tab for DELETE/reset endpoints. List path, method, scope. Do NOT call them.
 
 Do NOT: submit adversarial payloads, bypass auth, mutate data, navigate off-domain.
 
@@ -63,7 +67,15 @@ Write to .context/ui-test-discovery.md:
 Return: routes visited, flows found, forms found, console errors found.
 ```
 
-## Step 3 — Gate
+**Fallback:** if `web-app-auditor` agent type is unavailable:
+```
+Error: web-app-auditor agent type not available.
+Install the web-app-auditor plugin to use /qa-explore.
+See: https://github.com/anthropics/claude-code — Agent types documentation.
+```
+Stop. Do not silently continue.
+
+### Step 3 — Gate
 
 Read agent return values. Show:
 ```
@@ -77,19 +89,21 @@ Use as planner context? [y/trim/n]
 - `trim` → pause for user to edit, then set `$DISCOVERY_REPORT`
 - `n` → do not set `$DISCOVERY_REPORT`
 
-Return `$DISCOVERY_REPORT` (path or empty) to orchestrator. Orchestrator passes it to /qa-plan if set.
+Return `$DISCOVERY_REPORT` (path or empty) to orchestrator.
 
 ---
 
 ## Mobile Track (`--mobile`)
 
 ### M0 — Prereq
-- `$GEN.maestro.enabled` true, else stop.
+
+- `$GEN.maestro.enabled` true, else stop with: "Mobile discovery requires gen.maestro.enabled: true in qa-config.yml."
 - Ask `> Target: [android/ios]`. Require matching `android_app_id` / `ios_app_id`.
 - `maestro list-devices`. Ask `> Device ready? [y/n]`.
 
 ### M1 — Capture
-Spawn mobile discovery subagent with Maestro MCP (`mcp__maestro__*`):
+
+Spawn general-purpose subagent with Maestro MCP:
 
 ```
 Mobile QA discovery — passive only. No mutation, no auth bypass, no form submits beyond nav.
@@ -117,6 +131,7 @@ Return: screens, flows, forms, crashes.
 ```
 
 ### M2 — Gate
+
 Same as web Step 3. Report = `.context/mobile-discovery.md`.
 
 ---
@@ -126,3 +141,4 @@ Same as web Step 3. Report = `.context/mobile-discovery.md`.
 - Passive observation only — no adversarial actions.
 - Web agent stays within `$BASE_URL` origin; mobile agent stays within the app under test.
 - Main context only reads agent return summary — never the full report.
+- Agent type unavailability = hard error with install instructions. No silent fallback.

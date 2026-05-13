@@ -1,26 +1,32 @@
 # Canonical TC template — single source of truth for all qa-* skills.
 # All qa-plan, qa-sync, qa-adversarial, qa-codegen, qa-testrail output MUST conform to this shape.
-# TC ID uses tc_id.format from qa-config.yml (default: TC-{DOM}-{X}.{Y}.{Z})
-id: ""
-title: ""
-priority: P1             # P1 | P2 | P3
-platform: web            # web | mobile | backend | non-functional
-type: functional         # functional | integration | regression | smoke | performance | e2e | accessibility | security
-preconditions:
-  - ""
-steps:
-  - ""
-  - ""
-  - ""
-expected_result: ""
-jira_key: ""             # auto-linked if jira.project_key set; multiple keys space-separated
-source_docs:
-  - ""
-automation_status: manual   # manual | automated
-automation_id: ""        # backfilled by /qa-codegen
+# TC ID: TC-{DOM}-{X}.{Y}.{Z} — domain from tc_id.domains in qa-config.yml
+schema_version: 1
+id: ""                      # e.g. TC-WEB-1.1.1 — immutable after first write
+title: ""                   # concise, action-oriented — immutable after first write
+priority: medium            # critical | high | medium | low — immutable after first write
+platform: web               # web | mobile | ios | backend | non_functional — immutable after first write
+type: functional            # functional | integration | e2e | regression | performance | security | a11y — immutable
+preconditions: []           # list of strings — immutable after first write
+
+# TC verbosity controlled by tc_format in qa-config.yml (A | B | C):
+#   A: steps omitted, expected_result = single outcome
+#   B: steps = single prose block, expected_result = single outcome (DEFAULT)
+#   C: steps = list, each {step: "...", expected: "..."}, expected_result = overall outcome
+steps: ""                   # format B: single prose block. A: omit. C: list with per-step expected — immutable
+expected_result: ""         # A+B: single outcome. C: overall outcome (per-step in steps list) — immutable
+
+automation_status: manual   # manual | automated | skipped — mutable
+automation_id:              # YAML map keyed by framework name — mutable, backfilled by /qa-codegen
+  # playwright: qa/tests/web/specs/auth/tc-web-1-1-1.spec.ts
+  # maestro: qa/tests/mobile/flows/tc-mob-1-1-1.yaml
+  # xcui: qa/tests/ios/Tests/AuthTests/tc-ios-1-1-1.swift
+
+jira_key: ""                # mutable — auto-linked if jira.project_key set; space-separated if multiple
+source_docs: []             # list of doc filenames used during planning — immutable
+deprecated: false           # mutable — true = excluded from run + TestRail push; never deleted
 
 # Optional fields — absent is fine. When present, must match the declared shape.
-tags: []                 # free-form slice keys, e.g. ["smoke", "checkout", "regression-q2"]
-owner: ""                # individual or team responsible; free-form string
-deprecated: false        # true → excluded from run + testrail push; never deleted
-obsoletes: []            # TC IDs this case supersedes (list of strings)
+tags: []                    # free-form slice keys, e.g. ["smoke", "checkout", "regression-q2"]
+owner: ""                   # individual or team responsible; free-form string
+obsoletes: []               # TC IDs this case supersedes (list of strings)

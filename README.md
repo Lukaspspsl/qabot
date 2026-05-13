@@ -28,7 +28,9 @@ Pin a release:
 git clone --branch v0.1.0 https://github.com/Lukaspspsl/qabot.git ~/.qabot
 ```
 
-After install, `/qa` and all sub-skills (`/qa-plan`, `/qa-codegen`, `/qa-run`, `/qa-sync`, `/qa-triage`, `/qa-ci`, `/qa-explore`, `/qa-adversarial`, `/qa-init`) are available in any project.
+After install, `/qa` and all sub-skills (`/qa-plan`, `/qa-codegen`, `/qa-run`, `/qa-sync`, `/qa-triage`, `/qa-ci`, `/qa-explore`, `/qa-adversarial`, `/qa-bug`, `/qa-retire`, `/qa-testrail`, `/qa-init`) are available in any project.
+
+**Prerequisites:** RTK (Rust Token Killer) is required. Install from https://github.com/rtk-ai/rtk before using qabot. `/qa` will hard-fail without it.
 
 ### Hook configuration (optional)
 
@@ -108,80 +110,46 @@ Each phase shows a gate before proceeding. Use `[f] full run` from the menu to c
 | `/qa-ci` | — | Write GitHub Actions workflow files |
 | `/qa-testrail` | 4 | Optional — push TCs to TestRail (requires `testrail.enabled` + `.env` creds) |
 | `/qa-bug` | post-run | File failures from run-analysis / adversarial draft as Jira or GitHub issues |
-| `/qa-coverage` | — | Regenerate `qa/TEST-COVERAGE.md` — TC counts, automation %, gap list |
 | `/qa-retire` | — | Mark TCs `deprecated: true` for removed features (PR scan or manual) |
 
 ---
 
 ## Architecture
 
-### Config Contract
+See `docs/ARCHITECTURE.md` for full details. Key points:
 
-`qa-config.yml` is read **once** by the `/qa` orchestrator. All resolved values are passed inline to sub-skills — sub-skills never re-read the file.
-
-Key config sections:
-
-| Section | Purpose |
-|---------|---------|
-| `project` | Name, GitHub repo, Jira connection |
-| `tc_id` | TC ID format and domain abbreviations |
-| `paths` | Where cases, docs, tests, reports live |
-| `gen.*` | Per-framework enable flags + settings |
-| `adversarial` | Sandbox URL for edge-case testing |
-| `models` | Per-role model overrides (all fall back to `models.default`) |
-
-### TC ID Format
-
-Configurable via `tc_id.format` (default: `TC-{DOM}-{X}.{Y}.{Z}`).
-
-- `{DOM}` — domain abbreviation from `tc_id.domains` (WEB / MOB / BE / NF)
-- `{X}.{Y}.{Z}` — feature group . sub-feature . case number
-
-**IDs are immutable after first write.** Only `jira_key`, `automation_id`, `automation_status` may be updated on existing TCs.
+- `qa-config.yml` is read **once** by `/qa`. All resolved values passed inline to sub-skills.
+- Session ID (`QABOT_SESSION`) generated at startup — all reports from a session share the same ID.
+- RTK wraps doc reads, test execution, and PR fetching for 60–90% token savings.
+- Coverage tally computed inline by orchestrator — no subagent.
 
 ### TC Schema (canonical)
 
-`templates/tc.yml` is the single source of truth. All qa-* skills (qa-plan, qa-sync, qa-adversarial, qa-codegen, qa-testrail) read/write TCs conforming to this schema. `automation_status` defaults to `manual` on new TCs; `/qa-codegen` flips it to `automated` and backfills `automation_id`.
+`templates/tc.yml` + `docs/TC-SCHEMA.md`. Key fields:
+
+- `schema_version: 1`
+- `id: TC-{DOM}-{X}.{Y}.{Z}` — domain from `tc_id.domains`, immutable after write
+- `automation_id` — YAML map keyed by framework config key (e.g. `playwright:`, `maestro:`)
+- `tc_format` in config controls verbosity: A (title+result), B (single step block, default), C (verbose per-step)
 
 ### Agent Patterns
 
 **Planner + Validator loop** (`/qa-plan`):
-Planner agent writes TCs. Validator agent checks quality against a strict checklist. Max 2 iterations — if issues remain after iteration 2, user decides.
+Planner agent writes TCs from RTK-injected docs. Validator checks quality + schema. Max 2 iterations.
 
 **Info Barrier** (`/qa-codegen`):
-- Agent A receives TC YAMLs with `expected_result` redacted → writes test code with `ASSERT_HERE` markers
-- Main context builds `{ TC_ID → expected_result }` lookup map in memory only
-- Agent B receives only the lookup map → fills in assertions
-
-This prevents Agent A from writing tests that simply mirror the expected result, preserving assertion independence.
+- Main context replaces `expected_result` with `"REDACTED"` (string substitution) before Agent A spawn
+- Agent A writes test code with `# ASSERT_HERE: {TC_ID}` markers
+- Post-write leak check: grep for expected_result substrings in written files — hit = reject + retry
+- Agent B receives only the `TC_ID → expected_result` plain text map — fills assertions
 
 **Heal subagent** (`/qa-run`):
-Fixes broken locators, timing issues, navigation errors. Tags every change with `HEAL_FIX: [reason] | confidence: X.XX`. Changes with confidence < 0.70 tagged `HEAL_REVIEW` and surfaced to user before re-run.
-
-### Sub-skill Contracts
-
-Each skill receives a defined set of variables from the orchestrator and returns a summary (never raw file contents). Main context only ever sees counts and paths — never TC bodies or spec code.
-
-| Skill | Receives | Returns |
-|-------|----------|---------|
-| qa-plan | $CASES, $DOCS, $MODELS, $TC_FORMAT, $TC_DOMAINS, $JIRA_URL, $JIRA_KEY, $DISCOVERY_REPORT? | TC count, CSV path |
-| qa-codegen | $CASES, $TESTS, $MODELS, $TC_FORMAT, $GEN | spec count per framework, skipped TC IDs |
-| qa-run | $TESTS, $REPORTS, $MODELS, $GEN, $BASE_URL | pass rate per framework, fail count, HEAL_REVIEW count |
-| qa-sync | $CASES, $DOCS, $TESTS, $SYNC_LOG, $MODELS, $TC_FORMAT, $TC_DOMAINS, $GITHUB_REPO, $JIRA_URL, $JIRA_KEY, $GEN | new TC count, sync log path |
-| qa-explore | $GEN, $DOCS | $DISCOVERY_REPORT path or empty |
-| qa-adversarial | $ADV_URL, $CASES, $REPORTS, $TC_FORMAT, $TC_DOMAINS | draft TC count |
-| qa-triage | $CASES, $GITHUB_REPO, $JIRA_URL, $JIRA_KEY, $JIRA_QA_STATUS, $MODELS | (ephemeral — no files written) |
-| qa-ci | $GITHUB_REPO, $GEN, $TESTS, $REPORTS | workflow file paths |
-| qa-testrail | $CASES, $TC_FORMAT, $TC_DOMAINS, $TESTRAIL.*, $SYNC_LOG | created/updated counts |
-| qa-bug | $REPORTS, $CASES, $GITHUB_REPO, $JIRA_URL, $JIRA_KEY, $MODELS | filed count per destination |
-| qa-coverage | $CASES, $DOCS, $TESTS, $MODELS, $GEN | coverage md path, totals |
-| qa-retire | $CASES, $TESTS, $SYNC_LOG, $GITHUB_REPO, $MODELS, $GEN | retired count, report path |
+Fixes broken locators, timing, navigation. Tags changes with confidence score. `HEAL_REVIEW` for <0.70.
 
 ### Output Structure
 
 ```
 <project-root>/
-├── .gitignore           # qa-init appends qa-specific ignore rules
 └── qa/
     ├── qa-config.yml    # single config, read once by /qa
     ├── cases/
@@ -189,32 +157,19 @@ Each skill receives a defined set of variables from the orchestrator and returns
     │   │   └── TC-WEB-1.1.1-short-title.yml
     │   └── test-plan.csv
     ├── docs/            # source docs for planning
-    ├── reports/         # run-analysis-*.md, heal-*.md, results-*.json
+    ├── reports/         # plan-{session}.md, codegen-{fw}-{session}.md, run-analysis-{fw}-{session}.md
     ├── sync-log.md
-    ├── templates/       # local copy of tc.yml for reference
     ├── tests/
-    │   ├── web/         # Playwright (pages/, specs/, fixtures/, data/)
-    │   ├── mobile/      # Maestro (suites/, flows/, subflows/, data/)
-    │   └── ios/         # XCUI (Pages/, Tests/, Helpers/, Data/)
-    ├── .context/        # ephemeral — explore + adversarial artifacts
-    ├── .trsync/         # testrail mapping.json (per-clone state)
-    ├── .env             # creds — never committed
-    └── .env.example     # committed template
+    │   ├── web/         # Playwright
+    │   ├── mobile/      # Maestro
+    │   └── ios/         # XCUI
+    ├── .context/        # explore + adversarial artifacts
+    └── .env             # creds — never committed
 ```
 
-### Jira Integration
+### Adding a New Framework
 
-If `project.jira.project_key` is set, a subagent attempts to link each new TC to a matching Jira ticket by keyword search after every `/qa-plan` or `/qa-sync` run. Match threshold: >80% title keyword overlap. Ambiguous or failed matches are left empty — never blocked on Jira availability.
-
-`/qa-triage` also uses Jira (via Atlassian MCP) to score in-flight tickets against release signals before a QA cycle. Paste fallback available if MCP is unavailable.
-
-### Adding a New Automation Framework
-
-1. Add `gen.<name>:` block to `templates/qa-config.yml` with `enabled`, `root`, and framework-specific fields
-2. Add `## Framework: <Name>` section to `skills/qa-codegen/SKILL.md` — skip condition, file structure, element/locator rules, `ASSERT_HERE` marker syntax
-3. Add run command + heal block to `skills/qa-run/SKILL.md`
-4. The info barrier pattern, TC backfill, and immutability rules all apply unchanged
-
-### TBD — Issue #12: Explore and Adversarial Agent Types
-
-`/qa-explore` spawns a browser-based discovery agent. `/qa-adversarial` spawns an adversarial UI testing agent. The exact agent type identifiers for these sub-skills are **TBD** — current SKILL.md files reference `web-app-auditor` and `ui-adversarial` respectively, but the correct subagent_type values for the Agent tool in this runtime context have not been confirmed. Validate before relying on these phases in production use.
+1. Add `gen.<name>:` block to `templates/qa-config.yml`
+2. Add `## Framework: <Name>` section to `skills/qa-codegen/SKILL.md`
+3. Add run command block to `skills/qa-run/SKILL.md`
+4. Info barrier, TC backfill, RTK wrapping, immutability all apply unchanged
