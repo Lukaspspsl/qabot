@@ -60,11 +60,11 @@ Framework names in report filenames = config keys: `playwright`, `maestro`, `xcu
 
 **Hard-fail (stop pipeline):**
 - `which rtk` — RTK required for token efficiency
-- `ANTHROPIC_API_KEY` set — required to spawn agents
 - `qa/qa-config.yml` exists and valid
 - `.claude/hooks/pre_tool_use.py` installed
 
 **Warn (ask to continue):**
+- `ANTHROPIC_API_KEY` set — subagent spawning fails at runtime without it
 - `gh auth status` — needed for qa-sync/qa-ci
 - Jira MCP reachable — needed for auto-link + triage
 - TestRail creds in `.env` — needed for qa-testrail

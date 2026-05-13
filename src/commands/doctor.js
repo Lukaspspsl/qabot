@@ -28,12 +28,13 @@ function run() {
     if (!fs.existsSync(p)) throw new Error('Run /qa in Claude Code to scaffold');
   }) && ok;
 
-  warn('rtk installed', () => {
-    execFileSync('which', ['rtk'], { stdio: 'ignore' });
-  });
+  ok = check('rtk installed', () => {
+    try { execFileSync('which', ['rtk'], { stdio: 'ignore' }); }
+    catch { throw new Error('Install: https://github.com/rtk-ai/rtk'); }
+  }) && ok;
 
   warn('ANTHROPIC_API_KEY set', () => {
-    if (!process.env.ANTHROPIC_API_KEY) throw new Error('Set ANTHROPIC_API_KEY in environment');
+    if (!process.env.ANTHROPIC_API_KEY) throw new Error('Set ANTHROPIC_API_KEY — subagent spawning will fail at runtime');
   });
 
   console.log(ok ? '\nAll checks passed.' : '\nFix errors above before running /qa.');
