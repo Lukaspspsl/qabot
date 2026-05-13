@@ -1,20 +1,22 @@
 ---
 name: qa-init
-description: One-time scaffold. Optionally distributes qabot skills from a cloned repo to ~/.claude/skills/. Creates qa/ layout, copies qa-config.yml template, writes .env.example, seeds sync log, extends .gitignore. Idempotent.
+description: One-time scaffold. Copies qabot skills + hooks into project's .claude/ directory (project-local, git-ignored). Creates qa/ layout, copies qa-config.yml template, writes .env.example, seeds sync log, extends .gitignore. Idempotent.
 ---
 
 # /qa-init — Bootstrap + Scaffold
 
 Two modes:
 
-1. **First install** — pass `--from <path>` pointing to a cloned qabot repo. Distributes all skills globally to `~/.claude/skills/`, optionally wires hooks, then scaffolds this project's `qa/` directory.
+1. **First install** — pass `--from <path>` pointing to a cloned qabot repo. Installs all skills and hooks into this project's `.claude/` directory, then scaffolds `qa/`.
 2. **Already installed** — run without args. Scaffolds (or repairs) `qa/` only.
+
+All qabot skills and hooks live inside the project under `.claude/` — zero global installs, zero collision with user's own global hooks or skills.
 
 Receives from orchestrator: nothing (qa-init runs before config exists).
 
 ---
 
-## Step -1 — Distribute Framework (only if `--from <path>` provided)
+## Step -1 — Install Framework into Project (only if `--from <path>` provided)
 
 Parse `--from <path>` from invocation args. If absent, skip to Step 0.
 
@@ -29,15 +31,16 @@ SRC="<resolved --from path>"
 which rtk || echo "Warning: rtk not found. Install: https://github.com/rtk-ai/rtk — required before running /qa."
 ```
 
-**Distribute skills:**
+**Install skills into project `.claude/skills/`:**
 ```bash
-SKILLS_DST="$HOME/.claude/skills"
+PROJECT_ROOT="$(pwd)"
+SKILLS_DST="$PROJECT_ROOT/.claude/skills"
 mkdir -p "$SKILLS_DST"
 
 for skill_dir in "$SRC"/skills/qa*/; do
   skill_name=$(basename "$skill_dir")
   if [ -d "$SKILLS_DST/$skill_name" ]; then
-    ask "  $skill_name already exists. Overwrite? [y/n]"
+    ask "  $skill_name already exists in .claude/skills/. Overwrite? [y/n]"
     # n → skip this skill; y → overwrite
   fi
   cp -r "$skill_dir" "$SKILLS_DST/$skill_name"
@@ -46,26 +49,30 @@ done
 
 Show one line per installed skill:
 ```
-  ✓ qa → ~/.claude/skills/qa
-  ✓ qa-init → ~/.claude/skills/qa-init
+  ✓ qa → .claude/skills/qa
+  ✓ qa-init → .claude/skills/qa-init
   ...
 ```
 
-**Optionally wire hooks:**
-```
-Wire qabot hooks into ~/.claude/settings.json?
-Enforces info-barrier (Agent A/B) and blocks destructive bash patterns.
-[y] yes  [n] skip
+**Install hooks into project `.claude/hooks/`:**
+```bash
+HOOKS_DST="$PROJECT_ROOT/.claude/hooks"
+mkdir -p "$HOOKS_DST"
+cp "$SRC/hooks/pre_tool_use.py" "$HOOKS_DST/pre_tool_use.py"
+cp "$SRC/hooks/post_tool_use.py" "$HOOKS_DST/post_tool_use.py"
 ```
 
-If yes, merge into `~/.claude/settings.json` under `hooks` — append only, never overwrite existing entries:
+**Wire hooks in project `.claude/settings.json`:**
+
+Read existing `.claude/settings.json` if present. Merge hook entries — append only, never overwrite existing entries:
+
 ```json
 {
   "PreToolUse": [
     {
       "matcher": "Bash|WebFetch|Write|Edit|Read|Grep",
       "hooks": [
-        { "type": "command", "command": "python3 <SRC>/hooks/pre_tool_use.py" }
+        { "type": "command", "command": "python3 .claude/hooks/pre_tool_use.py" }
       ]
     }
   ],
@@ -73,24 +80,30 @@ If yes, merge into `~/.claude/settings.json` under `hooks` — append only, neve
     {
       "matcher": "*",
       "hooks": [
-        { "type": "command", "command": "python3 <SRC>/hooks/post_tool_use.py" }
+        { "type": "command", "command": "python3 .claude/hooks/post_tool_use.py" }
       ]
     }
   ]
 }
 ```
 
-Use the actual resolved `$SRC` path (not a variable) so the hook works from any project.
+Use relative path `python3 .claude/hooks/pre_tool_use.py` — Claude Code resolves relative paths from the project root, so this works without hardcoding the user's absolute path.
 
-**Summary after distribution:**
+If `.claude/settings.json` already contains a qabot hook entry (grep for `.claude/hooks/pre_tool_use.py`), skip — idempotent.
+
+**Summary after install:**
 ```
-Framework distributed from: /path/to/cloned/qabot
-  Skills installed: qa, qa-init, qa-plan, qa-codegen, qa-run, qa-sync,
-                    qa-triage, qa-ci, qa-explore, qa-adversarial, qa-bug,
-                    qa-retire, qa-testrail
-  Hooks wired: [yes | skipped]
+Framework installed into: .claude/
+  Skills: qa, qa-init, qa-plan, qa-codegen, qa-run, qa-sync,
+          qa-triage, qa-ci, qa-explore, qa-adversarial, qa-bug,
+          qa-retire, qa-testrail
+  Hooks:  .claude/hooks/pre_tool_use.py
+          .claude/hooks/post_tool_use.py
+  Config: .claude/settings.json [created | updated]
 
-Skills are now global — subsequent projects only need /qa-init (no --from).
+Skills and hooks are project-local — no global installs.
+Teammates get hook wiring automatically (settings.json committed).
+Reinstall skills/hooks: /qa-init --from <path-to-qabot>
 Continuing with project scaffold...
 ```
 
@@ -124,7 +137,7 @@ mkdir -p qa/cases qa/docs qa/tests qa/reports qa/templates qa/.context qa/.trsyn
 
 ## Step 2 — Copy Canonical Templates
 
-Resolve framework source: `$SRC` if `--from` was provided, else two dirs up from this SKILL.md (i.e. the globally installed skill's parent).
+Resolve framework source: `$SRC` if `--from` was provided, else two dirs up from this SKILL.md (i.e. the project-local skill's parent at `.claude/skills/`).
 
 ```bash
 FW_ROOT="${SRC:-$(dirname "$(dirname "$(realpath "$0")")")}"
@@ -140,6 +153,7 @@ Next: open qa/qa-config.yml and set:
   - project.jira.url, project.jira.project_key
   - tc_format: A | B | C  (default B — single step block)
   - gen.*.enabled (at least one framework)
+See docs/TC-SCHEMA.md and docs/CONFIG-SCHEMA.md for field reference.
 ```
 
 ---
@@ -180,10 +194,15 @@ printf 'last_sync: %s\n--- sync history ---\n' "$(date +%Y-%m-%d)" > qa/sync-log
 
 Idempotent append. Read existing `.gitignore` (if present); append only lines not already present.
 
-**Principle:** only test scripts + case YAMLs + config + sync log + templates commit. Everything else local.
+**Principle:** skills + hooks are reinstalled per developer — git-ignored. Only test scripts + case YAMLs + config + sync log + templates commit. `.claude/settings.json` IS committed so teammates get hook wiring without reinstall.
 
 ```
 # --- qa-concise ---
+# qabot project-local install (reinstall via /qa-init --from <path-to-qabot>)
+.claude/skills/qa*/
+.claude/hooks/pre_tool_use.py
+.claude/hooks/post_tool_use.py
+
 # Secrets
 qa/.env
 qa/.env.*
@@ -236,6 +255,11 @@ Write to `<project-root>/.gitignore` (NOT `qa/.gitignore`). If the `# --- qa-con
 - `qa/sync-log.md`
 - `qa/templates/`
 - `qa/.env.example`
+- `.claude/settings.json` — hook wiring; teammates inherit this on clone
+
+**Git-ignored** (reinstall per developer):
+- `.claude/skills/qa*/` — qabot skills
+- `.claude/hooks/pre_tool_use.py`, `.claude/hooks/post_tool_use.py` — qabot hooks
 
 ---
 
@@ -279,13 +303,16 @@ Print exactly:
 ```
 qa-init complete.
 
-  qa/qa-config.yml       [created | kept]
-  qa/templates/tc.yml    [created | kept]
+  .claude/skills/qa*/          [installed | skipped — already present]
+  .claude/hooks/               [installed | skipped — already present]
+  .claude/settings.json        [created | updated | skipped]
+  qa/qa-config.yml             [created | kept]
+  qa/templates/tc.yml          [created | kept]
   qa/{cases,docs,tests,reports,templates}   created
   qa/.context/ qa/.trsync/                  created
-  qa/.env.example        [created | kept]
-  qa/sync-log.md         [created | kept]
-  .gitignore             [updated | already installed]
+  qa/.env.example              [created | kept]
+  qa/sync-log.md               [created | kept]
+  .gitignore                   [updated | already installed]
 
 Next: fill qa/qa-config.yml required fields, then run /qa.
 See docs/TC-SCHEMA.md and docs/CONFIG-SCHEMA.md for field reference.
@@ -297,6 +324,8 @@ See docs/TC-SCHEMA.md and docs/CONFIG-SCHEMA.md for field reference.
 
 - Never overwrite a file without explicit `[o] overwrite` confirmation.
 - Never commit `.env` or `.trsync/mapping.json` — enforced via `.gitignore`.
-- Never scaffold outside `qa/` except `.gitignore` at project root.
+- Never scaffold outside `qa/` or `.claude/` except `.gitignore` at project root.
 - Never install framework deps without user `[y]`.
-- Idempotent: re-running after first init must be a no-op (except distribution step, which checks before overwriting).
+- Skills and hooks are git-ignored — reinstalled per developer via `--from`.
+- `.claude/settings.json` IS committed — teammates get hook wiring on clone.
+- Idempotent: re-running after first init must be a no-op (each step checks before acting).

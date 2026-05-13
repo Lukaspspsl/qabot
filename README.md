@@ -4,37 +4,31 @@ QA framework for Claude Code covering all the stages from analysis and plan, to 
 
 ## Install
 
-Clone the repo, bootstrap `/qa-init`, then let it distribute the rest:
+Everything installs into the project — no global Claude skills or hooks required.
 
 ```bash
 # 1. Clone qabot somewhere permanent (e.g. ~/qabot)
-git clone https://github.com/Lukaspspsl/qabot.git
+git clone https://github.com/Lukaspspsl/qabot.git ~/qabot
 
-# 2. Bootstrap — copy only qa-init so it's available as a skill
-cp -r ~/qabot/skills/qa-init ~/.claude/skills/
+# 2. In your target project, open Claude Code and run:
+/qa-init --from ~/qabot
 ```
 
-Then, in your target project, run Claude and use init skill:
-
-```
-/qa-init
-```
-
-`/qa-init` will copy all remaining skills to `~/.claude/skills/`, optionally wire the hooks, and scaffold your project's `qa/` directory. All subsequent projects only need step 3 — skills are already global.
+`/qa-init` copies all skills into `.claude/skills/`, hooks into `.claude/hooks/`, wires `.claude/settings.json`, and scaffolds your `qa/` directory. Skills and hooks are project-local and git-ignored — each developer on the team runs `/qa-init --from ~/qabot` once. Hook wiring (`.claude/settings.json`) is committed so the project enforces safety gates automatically.
 
 Pin a release:
 
 ```bash
-git clone --branch v0.1.0 https://github.com/Lukaspspsl/qabot.git ~/.qabot
+git clone --branch v0.1.0 https://github.com/Lukaspspsl/qabot.git ~/qabot
 ```
 
-After install, `/qa` and all sub-skills (`/qa-plan`, `/qa-codegen`, `/qa-run`, `/qa-sync`, `/qa-triage`, `/qa-ci`, `/qa-explore`, `/qa-adversarial`, `/qa-bug`, `/qa-retire`, `/qa-testrail`, `/qa-init`) are available in any project.
+After install, `/qa` and all sub-skills (`/qa-plan`, `/qa-codegen`, `/qa-run`, `/qa-sync`, `/qa-triage`, `/qa-ci`, `/qa-explore`, `/qa-adversarial`, `/qa-bug`, `/qa-retire`, `/qa-testrail`, `/qa-init`) are available in this project.
 
 **Prerequisites:** RTK (Rust Token Killer) is required. Install from https://github.com/rtk-ai/rtk before using qabot. `/qa` will hard-fail without it.
 
-### Hook configuration (optional)
+### Hook configuration
 
-The bundled `pre_tool_use.py` hook reads block patterns from env. All optional:
+The bundled `pre_tool_use.py` hook enforces the Agent A/B info barrier and blocks destructive patterns. It reads optional env vars:
 
 | Var | Purpose | Example |
 |-----|---------|---------|
@@ -45,10 +39,10 @@ The bundled `pre_tool_use.py` hook reads block patterns from env. All optional:
 
 ### Observability layer (off by default)
 
-`hooks/send_event.py` exists for opt-in observability but is **not wired** in `hooks/hooks.json`. To enable:
+`hooks/send_event.py` exists for opt-in observability but is **not wired** by default. To enable:
 
 1. Run a local obs server (defaults to `http://localhost:4000`); override with `OBS_SERVER_URL`.
-2. Add a `PostToolUse` entry calling `python3 ${CLAUDE_PLUGIN_ROOT}/hooks/send_event.py --event-type tool_use` in `hooks/hooks.json`.
+2. Add a `PostToolUse` entry calling `python3 .claude/hooks/send_event.py --event-type tool_use` in `.claude/settings.json`.
 
 
 ## How to Use
@@ -100,7 +94,7 @@ Each phase shows a gate before proceeding. Use `[f] full run` from the menu to c
 | Skill | Phase | What it does |
 |-------|-------|--------------|
 | `/qa` | — | Orchestrator — prereq checks, status, routing |
-| `/qa-init` | — | Bootstrap + scaffold — `--from <path>` distributes skills globally on first install; always creates `qa/` dirs, copies config, writes `.gitignore` |
+| `/qa-init` | — | Bootstrap + scaffold — `--from <path>` installs skills + hooks into `.claude/` (project-local, git-ignored); always creates `qa/` dirs, copies config, writes `.gitignore` |
 | `/qa-explore` | 0.5 | Browser-based live app discovery before planning |
 | `/qa-plan` | 1 | Generate TCs via Planner + Validator agent loop |
 | `/qa-codegen` | 2 | Generate Playwright / Maestro / XCUI automation |
