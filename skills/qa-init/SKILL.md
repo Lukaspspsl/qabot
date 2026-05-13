@@ -22,8 +22,16 @@ Parse `--from <path>` from invocation args. If absent, skip to Step 0.
 
 **Validate source:**
 ```bash
-SRC="<resolved --from path>"
-[ -d "$SRC/skills/qa" ] || error "Not a qabot repo — missing skills/qa/"
+SRC="$(cd "<resolved --from path>" && pwd)"  # expand ~ and resolve symlinks
+
+# Common mistake: user passes .../qabot/skills instead of .../qabot
+if [ -f "$SRC/qa/SKILL.md" ] && [ ! -d "$SRC/skills" ]; then
+  error "Wrong path — you passed the skills/ subdirectory, not the repo root.
+  Try: /qa-init --from $(dirname "$SRC")"
+fi
+
+[ -d "$SRC/skills/qa" ] || error "Not a qabot repo — missing skills/qa/
+  Pass the repo root, e.g.: /qa-init --from ~/qabot"
 ```
 
 **RTK check (warn if missing):**

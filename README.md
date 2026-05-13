@@ -10,11 +10,16 @@ Everything installs into the project — no global Claude skills or hooks requir
 # 1. Clone qabot somewhere permanent (e.g. ~/qabot)
 git clone https://github.com/Lukaspspsl/qabot.git ~/qabot
 
-# 2. In your target project, open Claude Code and run:
+# 2. Bootstrap qa-init globally — one-time, needed to run /qa-init
+cp -r ~/qabot/skills/qa-init ~/.claude/skills/
+
+# 3. In your target project, open Claude Code and run:
 /qa-init --from ~/qabot
 ```
 
-`/qa-init` copies all skills into `.claude/skills/`, hooks into `.claude/hooks/`, wires `.claude/settings.json`, and scaffolds your `qa/` directory. Skills and hooks are project-local and git-ignored — each developer on the team runs `/qa-init --from ~/qabot` once. Hook wiring (`.claude/settings.json`) is committed so the project enforces safety gates automatically.
+`--from` must point to the **qabot repo root** (the folder containing `skills/`), not a subfolder.
+
+`/qa-init` copies all remaining skills into `.claude/skills/`, hooks into `.claude/hooks/`, wires `.claude/settings.json`, and scaffolds `qa/`. Skills and hooks are project-local and git-ignored — each developer runs `/qa-init --from ~/qabot` once. Hook wiring (`.claude/settings.json`) is committed so the project enforces safety gates automatically.
 
 Pin a release:
 
