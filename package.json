@@ -1,0 +1,20 @@
+{
+  "name": "qabot-cli",
+  "version": "0.1.0",
+  "description": "QA framework for Claude Code — installs skills, hooks, and scaffolds qa/ in your project",
+  "license": "MIT",
+  "bin": {
+    "qabot": "./bin/qabot.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "skills/",
+    "hooks/",
+    "templates/"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {}
+}
