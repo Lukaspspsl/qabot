@@ -1,119 +1,24 @@
 ---
 name: qa-init
-description: One-time scaffold. Copies qabot skills + hooks into project's .claude/ directory (project-local, git-ignored). Creates qa/ layout, copies qa-config.yml template, writes .env.example, seeds sync log, extends .gitignore. Idempotent.
+description: Scaffold qa/ layout, copy config templates, write .env.example, seed sync log, extend .gitignore. Skills and hooks are installed by `npx qabot-cli init` — this skill only handles the qa/ scaffold step. Idempotent.
 ---
 
-# /qa-init — Bootstrap + Scaffold
+# /qa-init — Project Scaffold
 
-Two modes:
+`/qa-init` handles **qa/ directory scaffolding only**. Skills and hooks are installed by the npm CLI:
 
-1. **First install** — pass `--from <path>` pointing to a cloned qabot repo. Installs all skills and hooks into this project's `.claude/` directory, then scaffolds `qa/`.
-2. **Already installed** — run without args. Scaffolds (or repairs) `qa/` only.
+```bash
+npx qabot-cli init   # installs .claude/skills/, .claude/hooks/, wires settings.json, scaffolds qa/
+```
 
-All qabot skills and hooks live inside the project under `.claude/` — zero global installs, zero collision with user's own global hooks or skills.
+Running `/qa-init` directly is for re-scaffolding or repairing `qa/` after the CLI has already run. If skills are not yet installed, stop and tell the user:
+
+```
+qabot skills not found in .claude/skills/.
+Run this first: npx qabot-cli init
+```
 
 Receives from orchestrator: nothing (qa-init runs before config exists).
-
----
-
-## Step -1 — Install Framework into Project (only if `--from <path>` provided)
-
-Parse `--from <path>` from invocation args. If absent, skip to Step 0.
-
-**Validate source:**
-```bash
-SRC="$(cd "<resolved --from path>" && pwd)"  # expand ~ and resolve symlinks
-
-# Common mistake: user passes .../qabot/skills instead of .../qabot
-if [ -f "$SRC/qa/SKILL.md" ] && [ ! -d "$SRC/skills" ]; then
-  error "Wrong path — you passed the skills/ subdirectory, not the repo root.
-  Try: /qa-init --from $(dirname "$SRC")"
-fi
-
-[ -d "$SRC/skills/qa" ] || error "Not a qabot repo — missing skills/qa/
-  Pass the repo root, e.g.: /qa-init --from ~/qabot"
-```
-
-**RTK check (warn if missing):**
-```bash
-which rtk || echo "Warning: rtk not found. Install: https://github.com/rtk-ai/rtk — required before running /qa."
-```
-
-**Install skills into project `.claude/skills/`:**
-```bash
-PROJECT_ROOT="$(pwd)"
-SKILLS_DST="$PROJECT_ROOT/.claude/skills"
-mkdir -p "$SKILLS_DST"
-
-for skill_dir in "$SRC"/skills/qa*/; do
-  skill_name=$(basename "$skill_dir")
-  if [ -d "$SKILLS_DST/$skill_name" ]; then
-    ask "  $skill_name already exists in .claude/skills/. Overwrite? [y/n]"
-    # n → skip this skill; y → overwrite
-  fi
-  cp -r "$skill_dir" "$SKILLS_DST/$skill_name"
-done
-```
-
-Show one line per installed skill:
-```
-  ✓ qa → .claude/skills/qa
-  ✓ qa-init → .claude/skills/qa-init
-  ...
-```
-
-**Install hooks into project `.claude/hooks/`:**
-```bash
-HOOKS_DST="$PROJECT_ROOT/.claude/hooks"
-mkdir -p "$HOOKS_DST"
-cp "$SRC/hooks/pre_tool_use.py" "$HOOKS_DST/pre_tool_use.py"
-cp "$SRC/hooks/post_tool_use.py" "$HOOKS_DST/post_tool_use.py"
-```
-
-**Wire hooks in project `.claude/settings.json`:**
-
-Read existing `.claude/settings.json` if present. Merge hook entries — append only, never overwrite existing entries:
-
-```json
-{
-  "PreToolUse": [
-    {
-      "matcher": "Bash|WebFetch|Write|Edit|Read|Grep",
-      "hooks": [
-        { "type": "command", "command": "python3 .claude/hooks/pre_tool_use.py" }
-      ]
-    }
-  ],
-  "PostToolUse": [
-    {
-      "matcher": "*",
-      "hooks": [
-        { "type": "command", "command": "python3 .claude/hooks/post_tool_use.py" }
-      ]
-    }
-  ]
-}
-```
-
-Use relative path `python3 .claude/hooks/pre_tool_use.py` — Claude Code resolves relative paths from the project root, so this works without hardcoding the user's absolute path.
-
-If `.claude/settings.json` already contains a qabot hook entry (grep for `.claude/hooks/pre_tool_use.py`), skip — idempotent.
-
-**Summary after install:**
-```
-Framework installed into: .claude/
-  Skills: qa, qa-init, qa-plan, qa-codegen, qa-run, qa-sync,
-          qa-triage, qa-ci, qa-explore, qa-adversarial, qa-bug,
-          qa-retire, qa-testrail
-  Hooks:  .claude/hooks/pre_tool_use.py
-          .claude/hooks/post_tool_use.py
-  Config: .claude/settings.json [created | updated]
-
-Skills and hooks are project-local — no global installs.
-Teammates get hook wiring automatically (settings.json committed).
-Reinstall skills/hooks: /qa-init --from <path-to-qabot>
-Continuing with project scaffold...
-```
 
 ---
 

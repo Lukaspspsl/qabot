@@ -4,22 +4,20 @@ QA framework for Claude Code covering all the stages from analysis and plan, to 
 
 ## Install
 
-Everything installs into the project — no global Claude skills or hooks required.
-
 ```bash
-# 1. Clone qabot somewhere permanent (e.g. ~/qabot)
-git clone https://github.com/Lukaspspsl/qabot.git ~/qabot
-
-# 2. Bootstrap qa-init globally — one-time, needed to run /qa-init
-cp -r ~/qabot/skills/qa-init ~/.claude/skills/
-
-# 3. In your target project, open Claude Code and run:
-/qa-init --from ~/qabot
+npx qabot-cli init
 ```
 
-`--from` must point to the **qabot repo root** (the folder containing `skills/`), not a subfolder.
+Run this in your target project. It installs skills into `.claude/skills/`, hooks into `.claude/hooks/`, wires `.claude/settings.json`, and scaffolds `qa/`. No global installs. No cloning required.
 
-`/qa-init` copies all remaining skills into `.claude/skills/`, hooks into `.claude/hooks/`, wires `.claude/settings.json`, and scaffolds `qa/`. Skills and hooks are project-local and git-ignored — each developer runs `/qa-init --from ~/qabot` once. Hook wiring (`.claude/settings.json`) is committed so the project enforces safety gates automatically.
+Skills and hooks are **project-local and git-ignored** — each developer runs `npx qabot-cli init` once per project clone. Hook wiring (`.claude/settings.json`) is committed so teammates get it automatically.
+
+Then open Claude Code and run `/qa` to start.
+
+**Pin a version:**
+```bash
+npx qabot-cli@0.1.0 init
+```
 
 Pin a release:
 
@@ -99,7 +97,7 @@ Each phase shows a gate before proceeding. Use `[f] full run` from the menu to c
 | Skill | Phase | What it does |
 |-------|-------|--------------|
 | `/qa` | — | Orchestrator — prereq checks, status, routing |
-| `/qa-init` | — | Bootstrap + scaffold — `--from <path>` installs skills + hooks into `.claude/` (project-local, git-ignored); always creates `qa/` dirs, copies config, writes `.gitignore` |
+| `/qa-init` | — | Re-scaffold `qa/` dirs, config, .gitignore (skills + hooks installed by `npx qabot-cli init`) |
 | `/qa-explore` | 0.5 | Browser-based live app discovery before planning |
 | `/qa-plan` | 1 | Generate TCs via Planner + Validator agent loop |
 | `/qa-codegen` | 2 | Generate Playwright / Maestro / XCUI automation |
