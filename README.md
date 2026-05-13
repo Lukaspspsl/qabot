@@ -146,22 +146,25 @@ Fixes broken locators, timing, navigation. Tags changes with confidence score. `
 
 ```
 <project-root>/
+├── .claude/
+│   ├── settings.json    # hook wiring — committed
+│   ├── skills/qa*/      # qabot skills — git-ignored, reinstall via --from
+│   └── hooks/           # qabot hooks — git-ignored, reinstall via --from
 └── qa/
-    ├── qa-config.yml    # single config, read once by /qa
-    ├── cases/
-    │   ├── <feature-group>/
-    │   │   └── TC-WEB-1.1.1-short-title.yml
-    │   └── test-plan.csv
-    ├── docs/            # source docs for planning
-    ├── reports/         # plan-{session}.md, codegen-{fw}-{session}.md, run-analysis-{fw}-{session}.md
-    ├── sync-log.md
-    ├── tests/
+    ├── tests/           # COMMITTED — specs/flows (only committed qa/ subdir)
     │   ├── web/         # Playwright
     │   ├── mobile/      # Maestro
     │   └── ios/         # XCUI
-    ├── .context/        # explore + adversarial artifacts
-    └── .env             # creds — never committed
+    ├── qa-config.yml    # local — git-ignored by default
+    ├── cases/           # local — TC YAMLs, git-ignored by default
+    ├── docs/            # local — source docs for planning
+    ├── reports/         # local — plan/codegen/run-analysis reports
+    ├── sync-log.md      # local — sync state
+    ├── .context/        # local — explore + adversarial artifacts
+    └── .env             # local — creds, never committed
 ```
+
+Everything under `qa/` is git-ignored by default except `qa/tests/`. To commit cases, config, or docs, remove the relevant lines from `.gitignore`.
 
 ### Adding a New Framework
 
