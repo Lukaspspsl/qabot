@@ -7,6 +7,25 @@ description: Live app discovery before planning. Crawls web (web-app-auditor) or
 
 Receives from orchestrator: `$GEN`, `$DOCS`
 
+## Config Guard
+
+If `qa/qa-config.yml` not found:
+```
+qa/qa-config.yml not found.
+Run /qa-init to scaffold (full setup) or /qa (auto-routes to init if missing).
+
+Quick start — create qa/qa-config.yml:
+  project:
+    name: "My App"
+  gen:
+    playwright:
+      enabled: true
+      base_url: "http://localhost:3000"
+
+Then re-run this skill.
+```
+Stop. Do not proceed.
+
 Optional — run before /qa-plan to feed planner with live app observations.
 
 **Modes:** `web` (default) | `mobile` (`--mobile` flag)

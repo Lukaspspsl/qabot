@@ -7,6 +7,25 @@ description: Generate test cases from product docs. RTK doc injection, quality r
 
 Receives from orchestrator: `$CASES`, `$DOCS`, `$MODELS`, `$TC_FORMAT`, `$TC_DOMAINS`, `$TC_VERBOSITY`, `$JIRA_URL`, `$JIRA_KEY`, `$QABOT_SESSION`, `$QABOT_SCOPE`, `$DISCOVERY_REPORT` (optional)
 
+## Config Guard
+
+If `qa/qa-config.yml` not found:
+```
+qa/qa-config.yml not found.
+Run /qa-init to scaffold (full setup) or /qa (auto-routes to init if missing).
+
+Quick start — create qa/qa-config.yml:
+  project:
+    name: "My App"
+  gen:
+    playwright:
+      enabled: true
+      base_url: "http://localhost:3000"
+
+Then re-run this skill.
+```
+Stop. Do not proceed.
+
 ## Phase 1 — Planner Agent
 
 Spawn planner using `$MODELS.planner`.
