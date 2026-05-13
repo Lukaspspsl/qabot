@@ -24,6 +24,11 @@ SRC="<resolved --from path>"
 [ -d "$SRC/skills/qa" ] || error "Not a qabot repo — missing skills/qa/"
 ```
 
+**RTK check (warn if missing):**
+```bash
+which rtk || echo "Warning: rtk not found. Install: https://github.com/rtk-ai/rtk — required before running /qa."
+```
+
 **Distribute skills:**
 ```bash
 SKILLS_DST="$HOME/.claude/skills"
@@ -82,7 +87,7 @@ Use the actual resolved `$SRC` path (not a variable) so the hook works from any 
 Framework distributed from: /path/to/cloned/qabot
   Skills installed: qa, qa-init, qa-plan, qa-codegen, qa-run, qa-sync,
                     qa-triage, qa-ci, qa-explore, qa-adversarial, qa-bug,
-                    qa-coverage, qa-retire, qa-testrail
+                    qa-retire, qa-testrail
   Hooks wired: [yes | skipped]
 
 Skills are now global — subsequent projects only need /qa-init (no --from).
@@ -133,6 +138,7 @@ Next: open qa/qa-config.yml and set:
   - project.name
   - project.github_repo
   - project.jira.url, project.jira.project_key
+  - tc_format: A | B | C  (default B — single step block)
   - gen.*.enabled (at least one framework)
 ```
 
@@ -256,6 +262,7 @@ Print exactly:
 qa-init complete.
 
   qa/qa-config.yml       [created | kept]
+  qa/templates/tc.yml    [created | kept]
   qa/{cases,docs,tests,reports,templates}   created
   qa/.context/ qa/.trsync/                  created
   qa/.env.example        [created | kept]
@@ -263,6 +270,7 @@ qa-init complete.
   .gitignore             [updated | already installed]
 
 Next: fill qa/qa-config.yml required fields, then run /qa.
+See docs/TC-SCHEMA.md and docs/CONFIG-SCHEMA.md for field reference.
 ```
 
 ---
