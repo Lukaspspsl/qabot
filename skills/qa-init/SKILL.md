@@ -155,6 +155,11 @@ TR_PASSWORD=""
 
 # Anthropic — used by sub-agents invoked from skills
 ANTHROPIC_API_KEY=""
+
+# Stagehand (only if stagehand.enabled: true in qa-config.yml)
+# BROWSERBASE_API_KEY=""   # only needed if stagehand.env: BROWSERBASE
+# STAGEHAND_ENV="LOCAL"    # LOCAL | BROWSERBASE
+# Note: qa/.stagehand-cache.json is local only — not committed
 EOF
 ```
 
@@ -204,6 +209,9 @@ qa/tests/**/blob-report/
 # Maestro
 qa/tests/**/.maestro/
 
+# Stagehand (local cache — not committed, each user builds their own)
+qa/.stagehand-cache.json
+
 # XCUI / Android
 qa/tests/**/build/
 qa/tests/**/DerivedData/
@@ -252,6 +260,16 @@ Show command; do not install automatically (requires brew).
 
 ### XCUI (`gen.xcui.enabled: true`)
 Verify `xcodebuild -version`. Warn if missing.
+
+### Stagehand (`stagehand.enabled: true`)
+```
+Install Stagehand? [y/n]
+```
+If yes:
+```bash
+npm install @browserbasehq/stagehand zod
+```
+Note: Stagehand cache (`qa/.stagehand-cache.json`) is local — not committed. Each developer and CI run builds their own cache. Delete to force re-resolution after major UI changes.
 
 ---
 

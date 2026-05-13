@@ -151,6 +151,58 @@ Write summary to `$REPORTS/heal-{framework}-$QABOT_SESSION.md`.
 
 ---
 
+## Step 4.1 — Stagehand Fallback (playwright only, if `$GEN.stagehand.enabled` and heal did not fully converge)
+
+Triggers when:
+- Heal hit 3-cycle cap with remaining `locator` category failures, OR
+- Any patch was tagged `HEAL_REVIEW` with pattern `locator` AND confidence < 0.70
+
+Skip entirely if `$GEN.stagehand.enabled` is false or failures are not locator-category.
+
+**Gate:**
+```
+{N} locator failure(s) unresolved after Playwright heal.
+Try Stagehand AI fallback? (resolves selectors via natural language — LLM cost per cache miss)
+[y] try Stagehand  [n] surface as HEAL_REVIEW
+```
+
+On `y` — spawn Stagehand subagent:
+
+```
+You are a Playwright locator repair agent using Stagehand.
+Stagehand wraps Playwright — stagehand.page IS a Playwright page.
+
+For each failing spec:
+1. Import Stagehand alongside existing Playwright imports — do not replace them.
+2. For ONLY the broken locator line(s): replace with stagehand page.act() / page.observe() natural language equivalent.
+   Keep all surrounding Playwright code (fixtures, assertions, describe blocks) unchanged.
+3. Use cache: load existing cache from {$GEN.stagehand.cache_path} if present.
+   Cache key: "{instruction}::{page_url}". Write resolved entries back to cache file after resolution.
+4. After rewrite, run: npx playwright test {spec_path} --repeat-each=3
+   Pass all 3 → mark resolved. Any fail → revert, mark HEAL_REVIEW.
+
+Rules:
+- Touch ONLY broken locator lines — no other changes.
+- One act() call per locator. Natural language, no CSS/XPath.
+- Never change assertions, TC IDs, test structure, or expected values.
+- Cache is at {$GEN.stagehand.cache_path} — read before resolving, write after.
+- stagehand.env = {$GEN.stagehand.env}
+- stagehand.model = {$GEN.stagehand.model}
+```
+
+**After subagent returns:**
+- Resolved specs: append to heal log with `"pattern":"stagehand-locator"`, mark green
+- Unresolved: surface as `HEAL_REVIEW` with note "Stagehand fallback failed"
+- Update `$REPORTS/heal-{framework}-$QABOT_SESSION.md` with Stagehand section
+
+**Cache behaviour:**
+- Cache lives at `$GEN.stagehand.cache_path` (default: `qa/.stagehand-cache.json`)
+- Local only — NOT committed. Each developer/CI run builds their own cache.
+- Cache miss = one LLM call per broken locator. Cache hit = zero cost.
+- Delete cache to force full re-resolution (e.g. after major UI redesign).
+
+---
+
 ## Step 4.25 — Flake Gate (post-heal)
 
 Re-run healed specs only with `--repeat-each=3` before declaring green.

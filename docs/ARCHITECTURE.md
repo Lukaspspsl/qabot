@@ -128,6 +128,14 @@ Three formats, controlled by `tc_format` in `qa-config.yml` (default: `B`):
 | B | single prose block | single outcome |
 | C | list with `{step, expected}` per item | overall outcome |
 
+### Stagehand Fallback (opt-in)
+
+When `stagehand.enabled: true`, Stagehand activates as a last-resort heal step for Playwright locator failures. It never runs on passing tests — only after Playwright heal exhausts its 3-cycle cap or drops below 0.70 confidence on a locator failure.
+
+Stagehand rewrites only the broken locator line(s) using natural language (`page.act("click the submit button")`). All surrounding Playwright code stays intact. The spec remains a standard Playwright spec — Stagehand resolves the selector at runtime, Playwright executes the rest.
+
+Resolutions are cached at `qa/.stagehand-cache.json` (local only, not committed). Cache hit = zero LLM cost. Cache miss = one call per broken locator. Delete the cache after major UI redesigns to force fresh resolution.
+
 ### automation_id Format
 
 YAML map keyed by framework config key. Never a string or comma-separated value:
@@ -136,6 +144,7 @@ YAML map keyed by framework config key. Never a string or comma-separated value:
 automation_id:
   playwright: qa/tests/web/specs/auth/tc-web-1-1-1.spec.ts
   maestro: qa/tests/mobile/flows/tc-mob-1-1-1.yaml
+  stagehand: qa/tests/web/specs-stagehand/auth/tc-web-1-1-1.stagehand.spec.ts  # only if stagehand.enabled
 ```
 
 Multi-framework runs add keys without overwriting existing ones.

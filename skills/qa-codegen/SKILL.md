@@ -116,9 +116,55 @@ Multi-framework: merge new framework key into existing map. Never overwrite exis
 automation_id:
   playwright: qa/tests/web/specs/auth/tc-web-1-1-1.spec.ts
   maestro: qa/tests/mobile/flows/tc-mob-1-1-1.yaml    # added, playwright preserved
+  stagehand: qa/tests/web/specs-stagehand/auth/tc-web-1-1-1.stagehand.spec.ts  # only if stagehand.enabled
 ```
 
 Immutability: only `automation_id` and `automation_status` fields updated. Never touch steps, title, expected_result, id.
+
+### Stagehand Spec Generation (optional, playwright TCs only)
+
+If `$GEN.stagehand.enabled` and framework is `playwright`: after standard Playwright codegen, offer to generate a Stagehand variant:
+
+```
+Generate Stagehand specs alongside Playwright? (natural language selectors, AI fallback)
+[y] yes  [n] skip
+```
+
+On `y` — generate `.stagehand.spec.ts` for each TC in scope where `platform: web`:
+
+```typescript
+// {TC_ID} — Stagehand variant (natural language selectors, no CSS/XPath)
+import { test, expect } from "@playwright/test";
+import { Stagehand } from "@browserbasehq/stagehand";
+import { z } from "zod";
+
+test.describe("{TC_ID}: {title}", () => {
+  let stagehand: Stagehand;
+
+  test.beforeEach(async () => {
+    stagehand = new Stagehand({
+      env: (process.env.STAGEHAND_ENV ?? "{$GEN.stagehand.env}") as "LOCAL" | "BROWSERBASE",
+      modelName: process.env.STAGEHAND_MODEL ?? "{$GEN.stagehand.model}",
+    });
+    await stagehand.init();
+    await stagehand.page.goto(process.env.BASE_URL ?? "{$BASE_URL}");
+  });
+
+  test.afterEach(async () => { await stagehand.close(); });
+
+  test("{title}", async () => {
+    const { page } = stagehand;
+    // Steps → page.act() calls (natural language, one per step)
+    // Expected result → page.extract() with zod schema or page.observe()
+    // # ASSERT_HERE: {TC_ID}
+  });
+});
+```
+
+- Output: `qa/tests/web/specs-stagehand/<feature>/TC-{ID}.stagehand.spec.ts`
+- Info barrier applies: Agent A gets redacted TCs, Agent B fills assertions — same as Playwright
+- Backfill `automation_id.stagehand` in TC YAML after generation
+- These specs are supplementary — not run in default `npx playwright test`. Separate config or explicit path required.
 
 ---
 
