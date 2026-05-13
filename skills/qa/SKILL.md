@@ -63,7 +63,7 @@ Run these checks before anything else. Hard-fail on any FAIL item — list all, 
 | RTK installed | `which rtk` | "rtk not found. Install: https://github.com/rtk-ai/rtk — required for token efficiency." |
 | API key set | `echo $ANTHROPIC_API_KEY \| wc -c` (> 1) | "ANTHROPIC_API_KEY not set. Pipeline cannot spawn agents." |
 | Config valid | `qa/qa-config.yml` exists and parsed above | "qa/qa-config.yml missing or invalid. Run /qa-init." |
-| Hooks installed | `.claude/hooks/` contains `pre_tool_use.py` | "qabot hooks not installed. Run /qa-init." |
+| Hooks installed | `.claude/hooks/pre_tool_use.py` exists | "qabot hooks not installed. Run /qa-init --from <path-to-qabot>." |
 
 If any HARD FAIL: show list of all failures, stop. Do not proceed past this step.
 

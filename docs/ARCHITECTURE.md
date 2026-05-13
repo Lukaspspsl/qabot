@@ -170,6 +170,15 @@ Output: `Coverage: {N} TCs — WEB:{w} MOB:{m} BE:{b} NF:{n} | Automated: {a}%`
 ```
 <project-root>/
 ├── .gitignore               # qa-init writes qa-specific ignore rules here
+├── .claude/
+│   ├── settings.json        # hook wiring — committed; teammates inherit on clone
+│   ├── skills/              # qabot skills — git-ignored; reinstall via /qa-init --from
+│   │   ├── qa/
+│   │   ├── qa-plan/
+│   │   └── ... (all qa-* skills)
+│   └── hooks/               # qabot hooks — git-ignored; reinstall via /qa-init --from
+│       ├── pre_tool_use.py
+│       └── post_tool_use.py
 └── qa/
     ├── qa-config.yml        # single config, read once by /qa
     ├── cases/               # TC YAMLs — committed
@@ -184,9 +193,22 @@ Output: `Coverage: {N} TCs — WEB:{w} MOB:{m} BE:{b} NF:{n} | Automated: {a}%`
     └── .env.example         # committed template
 ```
 
-**Committed by default:** `qa/cases/**`, `qa/tests/**`, `qa/qa-config.yml`, `qa/sync-log.md`, `qa/templates/`, `qa/.env.example`.
+**Committed by default:** `qa/cases/**`, `qa/tests/**`, `qa/qa-config.yml`, `qa/sync-log.md`, `qa/templates/`, `qa/.env.example`, `.claude/settings.json`.
+
+**Git-ignored (reinstall per developer):** `.claude/skills/qa*/`, `.claude/hooks/pre_tool_use.py`, `.claude/hooks/post_tool_use.py`.
 
 **Everything else local.** Reports, discovery artifacts, mapping state, source docs, framework outputs.
+
+## Install Model
+
+No global installs required. Everything is project-local:
+
+```bash
+# Once per developer, per project:
+/qa-init --from ~/path/to/cloned/qabot
+```
+
+This copies skills to `.claude/skills/`, hooks to `.claude/hooks/`, and wires `.claude/settings.json`. Skills and hooks are git-ignored — each developer runs `--from` once. Hook wiring (`.claude/settings.json`) is committed so the project always enforces the info barrier and safety gates.
 
 ## Non-obvious Invariants
 
