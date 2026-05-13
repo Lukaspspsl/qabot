@@ -7,8 +7,8 @@ description: One-time scaffold. Copies qabot skills + hooks into project's .clau
 
 Two modes:
 
-1. **First install** — pass `--from <path>` pointing to a cloned qabot repo. Installs all skills and hooks into this project's `.claude/` directory, then scaffolds `qa/`.
-2. **Already installed** — run without args. Scaffolds (or repairs) `qa/` only.
+1. **First install** — no qa-* skills found in `.claude/skills/`. Prompts for qabot repo path (or use `--from <path>` to skip prompt). Installs all skills and hooks into this project's `.claude/` directory, then scaffolds `qa/`.
+2. **Already installed** — qa-* skills present in `.claude/skills/`. Scaffolds (or repairs) `qa/` only.
 
 All qabot skills and hooks live inside the project under `.claude/` — zero global installs, zero collision with user's own global hooks or skills.
 
@@ -16,22 +16,35 @@ Receives from orchestrator: nothing (qa-init runs before config exists).
 
 ---
 
-## Step -1 — Install Framework into Project (only if `--from <path>` provided)
+## Step -1 — Install Framework into Project
 
-Parse `--from <path>` from invocation args. If absent, skip to Step 0.
+**Detect whether install is needed:**
+```bash
+PROJECT_ROOT="$(pwd)"
+QA_SKILLS_COUNT=$(ls -d "$PROJECT_ROOT/.claude/skills/qa"* 2>/dev/null | wc -l)
+```
+
+If `QA_SKILLS_COUNT >= 3` (qa + at least 2 sub-skills): skills already installed → skip to Step 0.
+
+If `QA_SKILLS_COUNT < 3`: first install. Resolve source:
+
+1. If `--from <path>` provided: use that path.
+2. Otherwise: prompt:
+   ```
+   qabot repo path (e.g. ~/qabot):
+   ```
 
 **Validate source:**
 ```bash
-SRC="$(cd "<resolved --from path>" && pwd)"  # expand ~ and resolve symlinks
+SRC="$(cd "<path>" && pwd)"  # expand ~ and resolve symlinks
 
 # Common mistake: user passes .../qabot/skills instead of .../qabot
-if [ -f "$SRC/qa/SKILL.md" ] && [ ! -d "$SRC/skills" ]; then
-  error "Wrong path — you passed the skills/ subdirectory, not the repo root.
-  Try: /qa-init --from $(dirname "$SRC")"
+if [ ! -d "$SRC/skills" ] && [ -d "$SRC/qa" ]; then
+  error "Wrong path — looks like you passed skills/ subdirectory, not the repo root.
+  Try: $(dirname "$SRC")"
 fi
 
-[ -d "$SRC/skills/qa" ] || error "Not a qabot repo — missing skills/qa/
-  Pass the repo root, e.g.: /qa-init --from ~/qabot"
+[ -d "$SRC/skills/qa" ] || error "Not a qabot repo — skills/qa/ not found at $SRC"
 ```
 
 **RTK check (warn if missing):**
@@ -41,7 +54,6 @@ which rtk || echo "Warning: rtk not found. Install: https://github.com/rtk-ai/rt
 
 **Install skills into project `.claude/skills/`:**
 ```bash
-PROJECT_ROOT="$(pwd)"
 SKILLS_DST="$PROJECT_ROOT/.claude/skills"
 mkdir -p "$SKILLS_DST"
 
@@ -95,7 +107,7 @@ Read existing `.claude/settings.json` if present. Merge hook entries — append 
 }
 ```
 
-Use relative path `python3 .claude/hooks/pre_tool_use.py` — Claude Code resolves relative paths from the project root, so this works without hardcoding the user's absolute path.
+Use relative path `python3 .claude/hooks/pre_tool_use.py` — Claude Code resolves relative paths from project root.
 
 If `.claude/settings.json` already contains a qabot hook entry (grep for `.claude/hooks/pre_tool_use.py`), skip — idempotent.
 
@@ -111,7 +123,7 @@ Framework installed into: .claude/
 
 Skills and hooks are project-local — no global installs.
 Teammates get hook wiring automatically (settings.json committed).
-Reinstall skills/hooks: /qa-init --from <path-to-qabot>
+Reinstall skills/hooks any time: /qa-init (will prompt for repo path again)
 Continuing with project scaffold...
 ```
 
