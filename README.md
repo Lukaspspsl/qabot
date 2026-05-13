@@ -41,7 +41,7 @@ The bundled `pre_tool_use.py` hook reads block patterns from env. All optional:
 | `QABOT_BLOCKED_URLS` | Comma-separated regex; block WebFetch/curl to these URLs | `https?://api\.acme\.com,https?://.*\.prod\.` |
 | `QABOT_BLOCKED_BASH` | Comma-separated regex; override default destructive-bash blocklist | `rm\s+-rf\s+/,DROP\s+TABLE` |
 | `QABOT_WORKSPACE` | Absolute path; warn on writes outside this root | `/Users/me/proj/qa` |
-| `QABOT_AGENT_ROLE` | `A` or `B`; enforces info-barrier during codegen | `A` |
+| `QABOT_AGENT_ROLE` | `agent-a` or `agent-b`; enforces info-barrier during codegen | `agent-a` |
 
 ### Observability layer (off by default)
 
@@ -68,6 +68,8 @@ project:
   jira:
     url: "https://org.atlassian.net"
     project_key: "PROJ"
+
+tc_format: B               # A=title+result only, B=single step block (default), C=verbose per-step
 
 gen:
   playwright:
