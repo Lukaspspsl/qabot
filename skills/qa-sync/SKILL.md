@@ -7,6 +7,25 @@ description: Sync TCs against merged PRs since last run. RTK PR fetch. Session-l
 
 Receives from orchestrator: `$CASES`, `$DOCS`, `$TESTS`, `$SYNC_LOG`, `$MODELS`, `$TC_FORMAT`, `$TC_DOMAINS`, `$GITHUB_REPO`, `$JIRA_URL`, `$JIRA_KEY`, `$GEN`, `$NOTIFY`, `$QABOT_SESSION`
 
+## Config Guard
+
+If `qa/qa-config.yml` not found:
+```
+qa/qa-config.yml not found.
+Run /qa-init to scaffold (full setup) or /qa (auto-routes to init if missing).
+
+Quick start — create qa/qa-config.yml:
+  project:
+    name: "My App"
+  gen:
+    playwright:
+      enabled: true
+      base_url: "http://localhost:3000"
+
+Then re-run this skill.
+```
+Stop. Do not proceed.
+
 **Mode:** default = interactive. `--daily` flag = auto-approve covered features, gate only new/uncovered, open PR at end.
 
 ## Step 1 — Read Last Sync Date

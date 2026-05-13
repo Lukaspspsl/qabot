@@ -4,6 +4,25 @@ Turns `qa/reports/run-analysis-*.md` failures (and optional `.context/ui-test-bu
 
 Receives from orchestrator: `$REPORTS`, `$CASES`, `$GITHUB_REPO`, `$JIRA_URL`, `$JIRA_KEY`, `$MODELS`
 
+## Config Guard
+
+If `qa/qa-config.yml` not found:
+```
+qa/qa-config.yml not found.
+Run /qa-init to scaffold (full setup) or /qa (auto-routes to init if missing).
+
+Quick start — create qa/qa-config.yml:
+  project:
+    name: "My App"
+  gen:
+    playwright:
+      enabled: true
+      base_url: "http://localhost:3000"
+
+Then re-run this skill.
+```
+Stop. Do not proceed.
+
 ## Step 0 — Source Selection
 
 Scan inputs:

@@ -4,6 +4,25 @@ Receives from orchestrator: `$CASES`, `$TC_FORMAT`, `$TC_DOMAINS`, `$TESTRAIL.ur
 
 Push local TC YAMLs to TestRail. Diff + confirm + apply. Uses vendored `trsync/trsync.py`.
 
+## Config Guard
+
+If `qa/qa-config.yml` not found:
+```
+qa/qa-config.yml not found.
+Run /qa-init to scaffold (full setup) or /qa (auto-routes to init if missing).
+
+Quick start — create qa/qa-config.yml:
+  project:
+    name: "My App"
+  gen:
+    playwright:
+      enabled: true
+      base_url: "http://localhost:3000"
+
+Then re-run this skill.
+```
+Stop. Do not proceed.
+
 ## Step 0 — Prerequisites
 
 If `$TESTRAIL.url` empty or `$TESTRAIL.enabled` false:
