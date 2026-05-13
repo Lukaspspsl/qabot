@@ -61,9 +61,8 @@ Run these checks before anything else. Hard-fail on any FAIL item — list all, 
 | Check | Command | Failure message |
 |-------|---------|----------------|
 | RTK installed | `which rtk` | "rtk not found. Install: https://github.com/rtk-ai/rtk — required for token efficiency." |
-| API key set | `echo $ANTHROPIC_API_KEY \| wc -c` (> 1) | "ANTHROPIC_API_KEY not set. Pipeline cannot spawn agents." |
 | Config valid | `qa/qa-config.yml` exists and parsed above | "qa/qa-config.yml missing or invalid. Run /qa-init." |
-| Hooks installed | `.claude/hooks/pre_tool_use.py` exists | "qabot hooks not installed. Run /qa-init --from <path-to-qabot>." |
+| Hooks installed | `.claude/hooks/pre_tool_use.py` exists | "qabot hooks not installed. Run npx qabot-cli init." |
 
 If any HARD FAIL: show list of all failures, stop. Do not proceed past this step.
 
@@ -71,6 +70,7 @@ If any HARD FAIL: show list of all failures, stop. Do not proceed past this step
 
 | Check | Command | Warning message |
 |-------|---------|----------------|
+| API key | `echo $ANTHROPIC_API_KEY \| wc -c` (> 1) | "ANTHROPIC_API_KEY not set. Subagent spawning will fail at runtime." |
 | gh auth | `gh auth status 2>&1` (exit 0) | "gh not authenticated. qa-sync and qa-ci will fail." |
 | Jira MCP | Jira MCP tool available | "Jira MCP unavailable. Auto-linking and triage will be skipped." |
 | TestRail creds | `.env` contains `TR_USER` (only if testrail.enabled) | "TestRail creds not found in .env. /qa-testrail will fail." |
