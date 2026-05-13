@@ -1,11 +1,11 @@
 ---
 name: qa-adversarial
-description: Edge-case battery against live URL after qa-run passes. Surfaces boundary/empty/rapid-input failures as TC candidates. Optional phase.
+description: Edge-case battery against sandbox URL after qa-run passes. subagent_type=ui-adversarial. Optional phase — prompted at Phase 3 boundary.
 ---
 
 # /qa-adversarial — Edge-Case Battery (Phase 2.5)
 
-Receives from orchestrator: `$ADV_URL`, `$CASES`, `$REPORTS`, `$TC_FORMAT`, `$TC_DOMAINS`
+Receives from orchestrator: `$ADV_URL`, `$CASES`, `$REPORTS`, `$TC_FORMAT`, `$TC_DOMAINS`, `$QABOT_SESSION`
 
 Optional — run after /qa-run passes to surface edge-case failures as TC candidates.
 
@@ -23,9 +23,16 @@ curl -s -m 3 -o /dev/null -w "%{http_code}" "$ADV_URL"
 ```
 If unreachable: `> Sandbox not responding — continue anyway? [y/n]`
 
+Verify `$ADV_URL` differs from `gen.playwright.base_url`. If same:
+```
+Error: adversarial.base_url must differ from gen.playwright.base_url.
+Never run adversarial tests against the dev server.
+```
+Stop.
+
 ## Step 1 — Route Selection
 
-Auto-detect from `$REPORTS/run-analysis-web.md`: extract routes from spec paths.
+Auto-detect from `$REPORTS/run-analysis-playwright-*.md` (latest): extract routes from spec paths.
 Heuristic: `specs/auth/` → `/login /register`, `specs/checkout/` → `/checkout /cart`, etc.
 
 Show detected routes:
@@ -42,7 +49,7 @@ If < 2 detected: ask `> Routes to test (e.g. /login /checkout):`.
 mkdir -p .context/adversarial-screenshots
 ```
 
-Spawn `ui-adversarial` with:
+Spawn agent using subagent_type: `ui-adversarial` with:
 
 ```
 Run full adversarial battery.
@@ -64,6 +71,14 @@ Output STEP_PASS/STEP_FAIL per standard format.
 Save STEP_FAIL screenshots to: .context/adversarial-screenshots/
 ```
 
+**Fallback:** if `ui-adversarial` agent type is unavailable:
+```
+Error: ui-adversarial agent type not available.
+Install the ui-adversarial plugin to use /qa-adversarial.
+See: https://github.com/anthropics/claude-code — Agent types documentation.
+```
+Stop. Do not silently continue.
+
 ## Step 3 — Translate STEP_FAILs
 
 For each STEP_FAIL line from agent output, write draft TC stub to `.context/ui-test-bugs-draft.yml`:
@@ -79,29 +94,29 @@ drafts:
       title: "[Discovered] {title}"
       platform: web
       type: functional
-      priority: P2
-      automation_status: manual   # canonical schema: templates/tc.yml
+      priority: medium
+      automation_status: manual
       preconditions:
         - "{derived from route/auth context}"
-      steps:
-        - "{action from step}"
+      steps: "{action from step}"
       expected_result: "{expected from STEP_FAIL}"
       jira_key: ""
-      automation_id: ""
+      automation_id: {}
 ```
 
-ID will use `$TC_FORMAT` once approved and assigned.
+IDs assigned from `$TC_FORMAT` once approved.
 
 ## Step 4 — Gate
 
 ```
 Adversarial complete: routes={N}  tests={N}  pass={N}  fail={N}
+Session: {$QABOT_SESSION}
 Drafts: .context/ui-test-bugs-draft.yml
 
 [a] approve all  [r] review each  [s] save for later  [n] discard
 ```
 
-**Approve all:** assign next available TC IDs per `$TC_FORMAT`, write to `$CASES/`, remove from draft file.
+**Approve all:** assign next available TC IDs per `$TC_FORMAT`, write to `$CASES/`, remove from draft file. New TCs get `schema_version: 1`.
 
 **Review each:**
 ```
@@ -121,3 +136,4 @@ Screenshot: {path}
 - Approved TCs: `automation_status: manual` until explicitly run through /qa-codegen.
 - Screenshots are primary evidence — always linked in draft TC.
 - Agent runs autonomously — no user interaction mid-battery.
+- Agent type unavailability = hard error with install instructions. No silent fallback.

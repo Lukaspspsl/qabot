@@ -1,88 +1,88 @@
 ---
 name: qa-run
-description: Execute tests, analyse failures, heal flaky locators/timing. Tags low-confidence fixes as HEAL_REVIEW for user approval before re-run.
+description: Execute tests via RTK, analyse failures, heal flaky locators/timing. Framework names = config keys. Session-linked reports.
 ---
 
 # /qa-run — Run + Analyse + Heal
 
-Receives from orchestrator: `$TESTS`, `$REPORTS`, `$MODELS`, `$GEN`, `$BASE_URL`, `$REPORTS_RETENTION`, `$NOTIFY`
+Receives from orchestrator: `$TESTS`, `$REPORTS`, `$MODELS`, `$GEN`, `$BASE_URL`, `$REPORTS_RETENTION`, `$NOTIFY`, `$QABOT_SESSION`, `$QABOT_FRAMEWORK`
 
 ## Step 0 — Pre-check
 
 **Retention prune** (before any new reports written). If `$REPORTS_RETENTION > 0`:
 ```bash
-find "$REPORTS" -type f -mtime +$REPORTS_RETENTION -name '*.md' -delete 2>/dev/null
-find "$REPORTS" -type f -mtime +$REPORTS_RETENTION -name '*.json' -delete 2>/dev/null
-find "$REPORTS" -type f -mtime +$REPORTS_RETENTION -name '*.txt' -delete 2>/dev/null
-find "$REPORTS" -type f -mtime +$REPORTS_RETENTION -name '*.xcresult' -delete 2>/dev/null
+find "$REPORTS" -type f -mtime +$REPORTS_RETENTION \( -name '*.md' -o -name '*.json' -o -name '*.txt' -o -name '*.xcresult' \) -delete 2>/dev/null
 ```
-Skip silently if `$REPORTS_RETENTION == 0` (keep forever).
 
-Determine active frameworks from `$GEN`. For each enabled:
+Determine active frameworks from `$GEN` (filter by `$QABOT_FRAMEWORK` if set). For each enabled:
 
-**Playwright:**
+**playwright:**
 - `$GEN.playwright.root/specs/` has `.spec.ts` files
 - `npx tsc --noEmit` passes (warn if fails, don't block)
-- If `$BASE_URL` empty: ask `> Base URL?` and use for this run
+- If `$BASE_URL` empty: ask `> Base URL?`
 - Ask: `> App running at $BASE_URL? [y/n]`
 
-**Maestro:**
+**maestro:**
 - `$GEN.maestro.root/flows/` has `.yaml` files
 - Ask: `> Target platform: [android/ios/both]`
-  - Android requires `$GEN.maestro.android_app_id` set; warn if empty
-  - iOS requires `$GEN.maestro.ios_app_id` set; warn if empty
-- `maestro list-devices` — show output, ask to confirm device/emulator ready
-- Pass `ANDROID_APP_ID=$GEN.maestro.android_app_id` / `IOS_APP_ID=$GEN.maestro.ios_app_id` as env vars when running flows
+- `maestro list-devices` — confirm device/emulator ready
+- Pass `ANDROID_APP_ID=$GEN.maestro.android_app_id` / `IOS_APP_ID=$GEN.maestro.ios_app_id`
 
-**XCUI:**
+**xcui:**
 - `$GEN.xcui.root/Tests/` has `.swift` files
 - Ask: `> Simulator/device ready? Scheme: $GEN.xcui.scheme [y/n]`
 
-**Espresso:**
-- `$GEN.espresso.root/app/src/androidTest/` has `.kt`/`.java` files
+**espresso:**
 - Ask: `> Emulator/device connected? Package: $GEN.espresso.package [y/n]`
 
-**VRT:**
-- `$GEN.vrt.root/specs/` has `.vrt.spec.ts` files
+**vrt:**
 - Ask: `> Base URL? Baselines exist (first run needs --update-snapshots)? [y/n]`
 
-**Performance / Security:**
-- Present if `$GEN.performance.enabled` or `$GEN.security.enabled`.
-- Ask target URL confirmation (fallback `$GEN.playwright.base_url`). Security scans also require explicit "authorized to scan" confirmation.
+**performance / security:**
+- Confirm target URL. Security scans require explicit "authorized to scan" confirmation.
 
-If multiple frameworks enabled: `Run which? 1. Playwright  2. Maestro  3. XCUI  4. All`
+If multiple frameworks enabled and `$QABOT_FRAMEWORK` not set:
+```
+Run which? 1. playwright  2. maestro  3. xcui  4. All
+```
+
+---
 
 ## Step 1 — Run
 
-**Playwright:**
+**playwright:**
 ```bash
-npx playwright test 2>&1 | tee $REPORTS/run-output-web.txt
+rtk test "npx playwright test {scope_flags}" 2>&1 | tee $REPORTS/run-output-playwright-$QABOT_SESSION.txt
 ```
-Config in `playwright.config.ts` — JSON reporter to `$REPORTS/results-web.json`.
+Config in `playwright.config.ts` — JSON reporter to `$REPORTS/results-playwright-$QABOT_SESSION.json`.
 
-**Sandbox auto-detect:** if output matches `bootstrap_check_in.*Permission denied|mach.*denied|sandbox.*denied`, prompt user:
-  > Sandbox denied during Chromium launch. Disable sandbox for ONE retry of this command? [y/n]
-On `y`: re-run THIS command only with `dangerouslyDisableSandbox: true`. Do not set session flag. Do not apply to subsequent calls. Each new sandbox failure must re-prompt.
-On `n` / no response: surface error to user, abort run.
-Never auto-flip. Never persist across calls.
+**Sandbox auto-detect:** if output matches `bootstrap_check_in.*Permission denied|mach.*denied|sandbox.*denied`:
+```
+Sandbox denied during Chromium launch. Disable sandbox for ONE retry? [y/n]
+```
+On `y`: re-run with `dangerouslyDisableSandbox: true` for this command only. Never persist. Never auto-flip.
 
-**Maestro:**
+**maestro:**
 ```bash
-maestro test $GEN.maestro.root 2>&1 | tee $REPORTS/run-output-mobile.txt
+rtk test "maestro test $GEN.maestro.root" 2>&1 | tee $REPORTS/run-output-maestro-$QABOT_SESSION.txt
 ```
 
-**XCUI:**
+**xcui:**
 ```bash
 xcodebuild test -scheme $GEN.xcui.scheme -destination 'platform=iOS Simulator,name=iPhone 16' \
-  -resultBundlePath $REPORTS/xcui-results.xcresult 2>&1 | tee $REPORTS/run-output-xcui.txt
+  -resultBundlePath $REPORTS/xcui-results-$QABOT_SESSION.xcresult 2>&1 | tee $REPORTS/run-output-xcui-$QABOT_SESSION.txt
 ```
+
+RTK shows only failures + summary — slim output is the intent. Full output still saved to txt for reference.
+
+---
 
 ## Step 2 — Analyse (subagent, model: `$MODELS.run_analysis`)
 
-**Playwright:** slim results before spawning:
+**playwright:** slim results before spawning:
 ```bash
 jq '[.suites[].specs[] | {title, ok, duration: .results[0].duration, error: .results[0].errors[0].message[:300]? // null}]' \
-  $REPORTS/results-web.json > $REPORTS/results-web-slim.json
+  $REPORTS/results-playwright-$QABOT_SESSION.json > $REPORTS/results-playwright-slim-$QABOT_SESSION.json
 ```
 
 Spawn subagent per framework:
@@ -93,9 +93,13 @@ Produce:
 2. Failure categories: locator | assertion | timeout | setup
 3. Per-feature breakdown
 4. Flaky tests (passed on retry)
-Write to $REPORTS/run-analysis-{web|mobile|xcui}.md
+Write to $REPORTS/run-analysis-{framework}-$QABOT_SESSION.md
 Return: pass rate, fail count, top failure categories
 ```
+
+Report filename uses framework config key: `run-analysis-playwright-{session}.md`, `run-analysis-maestro-{session}.md`, `run-analysis-xcui-{session}.md`.
+
+---
 
 ## Step 3 — Gate
 
@@ -108,100 +112,100 @@ If failures:
 3. Skip
 ```
 
+---
+
 ## Step 4 — Heal (if chosen, subagent, model: `$MODELS.heal`)
 
 Internal loop, max 3 cycles. Healer:
 1. Snapshot TC YAMLs (sha256 per file) before patching.
 2. Patch failing files. Tag `// HEAL_FIX: [reason] | confidence: X.XX` (or `HEAL_REVIEW` if <0.70).
-3. Run **full suite** (not just failing). Detect new regressions introduced by patch.
-4. Append entry per patch to `$REPORTS/heal-log.jsonl`:
+3. Run full suite (not just failing). Detect regressions introduced by patch.
+4. Append per patch to `$REPORTS/heal-log.jsonl`:
    `{"cycle":N,"ts":"...","file":"...","tc":"...","pattern":"locator|timing|setup|race","confidence":0.9,"before_sha":"...","after_sha":"...","result":"pass|fail|regress"}`
-5. Re-snapshot TC YAMLs; diff vs step 1. Any change to `expected_result|steps|title|id` ⇒ revert patch, mark `HEAL_REJECTED`, abort cycle.
-6. Converge: all green ⇒ exit. New failure ⇒ next cycle. Cap=3 ⇒ surface `no convergence` to user with last delta.
+5. Re-snapshot TC YAMLs; diff vs step 1. Any change to `expected_result|steps|title|id` → revert patch, mark `HEAL_REJECTED`, abort cycle.
+6. Converge: all green → exit. New failure → next cycle. Cap=3 → surface `no convergence` with last delta.
 
 **Fix only:** locators, timing (condition-based waits, never `waitForTimeout`), navigation, preconditions, state isolation.
 **Never change:** expected results, assertion values, TC IDs, step logic.
 
-Write summary to `$REPORTS/heal-{web|mobile|xcui}.md`. Return: cycles, patches, HEAL_REVIEW count, convergence status.
+Write summary to `$REPORTS/heal-{framework}-$QABOT_SESSION.md`.
+
+---
 
 ## Step 4.25 — Flake Gate (post-heal)
 
-After heal converges, re-run healed specs only with `--repeat-each=3` before declaring green.
+Re-run healed specs only with `--repeat-each=3` before declaring green.
 
-**Playwright:**
+**playwright:**
 ```bash
-npx playwright test {healed_spec_paths} --repeat-each=3 2>&1 | tee $REPORTS/flake-gate-web.txt
+npx playwright test {healed_spec_paths} --repeat-each=3 2>&1 | tee $REPORTS/flake-gate-playwright-$QABOT_SESSION.txt
 ```
 
-Any failure across the 3 reps ⇒ mark spec flaky, feed into Step 4.5 quarantine list. All-pass ⇒ green.
+Any failure across 3 reps → mark spec flaky, feed into Step 4.5. All-pass → green.
 
-Skip if heal did not run or no specs patched.
+---
 
 ## Step 4.5 — Flaky Quarantine
 
-After analysis, if any test marked flaky (passed on retry):
+After analysis, if any test marked flaky:
 ```
 {N} flaky test(s) detected:
   - specs/auth/tc-web-1-1-1.spec.ts — TC-WEB-1.1.1
-  - flows/tc-mob-2-1-1.yaml — TC-MOB-2.1.1
 Quarantine flagged specs? [y/n]
 ```
 
 On `y`:
-- **Playwright:** prepend `.fixme` to the matching `test()` — e.g. `test.fixme('TC-WEB-1.1.1 — …', async ...)`. Comment above: `// FLAKY: quarantined {YYYY-MM-DD} — run N, see qa/reports/flaky.md`.
-- **Maestro:** move flow file to `$GEN.maestro.root/flows/_quarantine/` (create dir if absent). Remove from any suite that references it; log pruned suite lines.
-- **XCUI:** add `XCTSkip("FLAKY: quarantined {date}")` at top of test function. Comment with TC ID + report reference.
+- **playwright:** prepend `.fixme` to matching `test()`. Comment: `// FLAKY: quarantined {YYYY-MM-DD} — run $QABOT_SESSION, see qa/reports/flaky.md`
+- **maestro:** move flow to `flows/_quarantine/`. Remove from suites.
+- **xcui:** add `XCTSkip("FLAKY: quarantined {date}")` with TC ID + report ref.
 
-Write `$REPORTS/flaky.md` (append-only):
+Append to `$REPORTS/flaky.md`:
 ```markdown
-# Flaky Quarantine Log
-
-## {YYYY-MM-DD HH:MM}
-- TC-WEB-1.1.1 — specs/auth/tc-web-1-1-1.spec.ts — passed 1/3 retries — run ID {run_id}
-- TC-MOB-2.1.1 — flows/tc-mob-2-1-1.yaml — passed 1/2 retries
+## {YYYY-MM-DD HH:MM} — session {QABOT_SESSION}
+- TC-WEB-1.1.1 — specs/auth/tc-web-1-1-1.spec.ts — passed 1/3 retries
 ```
 
-Never modifies TC YAMLs. Quarantine is spec-level only; TC remains active. User un-quarantines manually by removing `.fixme` / restoring file / removing `XCTSkip`.
+Never modifies TC YAMLs.
+
+---
 
 ## Step 5 — HEAL_REVIEW Gate
 
-If heal report contains any `HEAL_REVIEW` tags:
+If heal report contains `HEAL_REVIEW` tags:
 ```
 {N} changes flagged HEAL_REVIEW (confidence < 0.70)
-See: $REPORTS/heal-{framework}.md
+See: $REPORTS/heal-{framework}-{session}.md
 Review before re-run? [y/n]
 ```
-- `y` → pause. User inspects/edits flagged files. Confirm when done.
-- `n` → proceed to re-run offer without pause.
+
+---
 
 ## Step 6 — Notifications
 
-If `$NOTIFY.slack` or `$NOTIFY.teams` set, post run summary after final results (post once per run, after any re-run).
+If `$NOTIFY.slack` or `$NOTIFY.teams` set, post run summary after final results.
 
-Payload shape:
+Payload:
 ```
 {$NAME} qa-run — {pass_rate}% ({passed}/{total})
-failed={F}  flaky={X}  heal_review={H}
+session={QABOT_SESSION} failed={F} flaky={X} heal_review={H}
 report: {repo_url or local path}
 ```
 
-Slack (`$NOTIFY.slack`):
-```bash
-curl -s -X POST -H 'Content-Type: application/json' \
-  -d '{"text":"<payload>"}' "$NOTIFY.slack"
-```
+Best-effort. Network failure: log warning, never block return.
 
-Teams (`$NOTIFY.teams`) — MessageCard:
-```bash
-curl -s -X POST -H 'Content-Type: application/json' \
-  -d '{"@type":"MessageCard","text":"<payload>"}' "$NOTIFY.teams"
-```
-
-Best-effort. Network failure: log warning, never block return. Skip entirely if both empty.
+---
 
 ## Return Contract
 
-Return to orchestrator: pass rate per framework, fail count, HEAL_REVIEW count (if heal ran).
+Return to orchestrator: pass rate per framework, fail count, HEAL_REVIEW count (if heal ran), report paths.
+
+Report naming convention:
+- `run-output-{framework}-{session}.txt` — raw RTK output
+- `run-analysis-{framework}-{session}.md` — analysis subagent report
+- `heal-{framework}-{session}.md` — heal summary
+- `results-{framework}-{session}.json` — raw test runner JSON
+
+Framework = config key: `playwright`, `maestro`, `xcui`, `api`, `a11y`, `vrt`, `performance`, `security`, `espresso`.
 
 ## Rules
 
@@ -209,3 +213,4 @@ Return to orchestrator: pass rate per framework, fail count, HEAL_REVIEW count (
 - Healer fixes execution only — never expectations.
 - Run each framework fully before starting next.
 - Silent except summaries and gates.
+- All RTK wrapping transparent — output same as direct command, just token-optimized.

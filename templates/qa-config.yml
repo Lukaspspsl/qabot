@@ -6,6 +6,8 @@ project:
     project_key: ""            # PROJ
     ready_for_qa_status: "Ready for QA"
 
+tc_format: B               # A | B | C — TC verbosity. A=title+result only, B=single step block (default), C=per-step with individual results
+
 tc_id:
   format: "TC-{DOM}-{X}.{Y}.{Z}"   # change prefix or structure here
   domains:

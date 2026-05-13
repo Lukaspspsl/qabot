@@ -1,4 +1,4 @@
-# qa-concise — Architecture
+# qabot — Architecture
 
 Lightweight QA framework. Main context never reads TC bodies or spec code — only counts and paths. All heavy work happens inside subagents.
 
@@ -10,89 +10,157 @@ Lightweight QA framework. Main context never reads TC bodies or spec code — on
            └──────┬──────┘
                   ▼
            ┌─────────────┐
-           │    /qa      │  orchestrator — reads config once, routes by state
+           │    /qa      │  orchestrator — doctor checks, session ID, routes by state
            └──────┬──────┘
                   ▼
-  0.5  /qa-explore  (optional — live app discovery)
-   │        │
-   ▼        ▼
-  1    /qa-plan       → TCs in qa/cases/**.yml + qa/test-plan.csv
+  0.5  /qa-explore  (optional — live app discovery, web-app-auditor agent)
    │
    ▼
-  2    /qa-codegen    → Playwright / Maestro / XCUI specs in qa/tests/
+  1    /qa-plan       → TCs in qa/cases/**.yml + qa/test-plan.csv + plan-{session}.md
    │
    ▼
-  3    /qa-run        → execute + analyse + heal; reports in qa/reports/
+  2    /qa-codegen    → Playwright / Maestro / XCUI specs + codegen-{framework}-{session}.md
    │
    ▼
-  2.5  /qa-adversarial  (optional, post-run — edge-case battery against sandbox)
+  3    /qa-run        → execute + analyse + heal; run-analysis-{framework}-{session}.md
+   │
+   ▼
+  2.5  /qa-adversarial  (optional, post-run — ui-adversarial agent, sandbox only)
    │
    ▼
   4    /qa-testrail   (optional — push to TestRail)
-        /qa-sync      (on each release — scan merged PRs, add new TCs)
-        /qa-triage    (before QA cycle — score Jira tickets)
-        /qa-ci        (one-time — write GitHub Actions workflows)
-        /qa-bug       (failure → Jira/GitHub issue)
+       /qa-sync       (on each release — scan merged PRs, add new TCs)
+       /qa-triage     (before QA cycle — score Jira tickets)
+       /qa-ci         (one-time — write GitHub Actions workflows)
+       /qa-bug        (failure → Jira/GitHub issue)
 ```
 
-Each phase has an approval gate before the next runs. `[f] full run` from the menu chains Plan → Codegen → Run with one confirmation per step.
+Each phase has a human approval gate before the next runs. `[f] full run` from the menu chains Plan → Codegen → Run with one confirmation per step.
+
+## Session ID
+
+`/qa` generates an 8-char hex session ID (`QABOT_SESSION`) at startup via `openssl rand -hex 4`. All reports from that session share the same ID for correlation:
+
+```
+qa/reports/plan-{session}.md
+qa/reports/codegen-{framework}-{session}.md
+qa/reports/run-analysis-{framework}-{session}.md
+qa/reports/run-output-{framework}-{session}.txt
+qa/reports/heal-{framework}-{session}.md
+qa/reports/sync-{session}.md
+```
+
+Framework names in report filenames = config keys: `playwright`, `maestro`, `xcui`, `api`, `a11y`, `vrt`, `performance`, `security`, `espresso`. Never aliases like `web` or `mobile`.
 
 ## Core Patterns
 
+### Doctor Checks
+
+`/qa` runs tiered checks before each session:
+
+**Hard-fail (stop pipeline):**
+- `which rtk` — RTK required for token efficiency
+- `ANTHROPIC_API_KEY` set — required to spawn agents
+- `qa/qa-config.yml` exists and valid
+- `.claude/hooks/pre_tool_use.py` installed
+
+**Warn (ask to continue):**
+- `gh auth status` — needed for qa-sync/qa-ci
+- Jira MCP reachable — needed for auto-link + triage
+- TestRail creds in `.env` — needed for qa-testrail
+- Obs server running at localhost:4000
+
+### RTK Integration
+
+RTK (Rust Token Killer) wraps three operations for 60–90% token savings:
+
+```bash
+rtk read {doc_file}                    # qa-plan doc injection
+rtk test "npx playwright test ..."     # qa-run test execution
+rtk gh pr list --json ...              # qa-sync PR fetch
+```
+
+RTK is a mandatory dependency. `/qa` hard-fails if `which rtk` returns nothing.
+
 ### Builder-Validator
 
-Two-agent loop used in `/qa-plan` (and reused in `/qa-bug` confirm gate).
+Two-agent loop used in `/qa-plan`.
 
-- **Builder** — planner agent writes all TC YAMLs from source docs.
-- **Validator** — independent agent checks output against a strict schema/quality checklist. Returns `APPROVED` or `ISSUES: [...]`.
+- **Builder (Planner)** — writes all TC YAMLs from source docs.
+- **Validator** — independent agent checks output against strict schema + quality checklist. Returns `APPROVED` or `ISSUES: [...]`.
 - Max 2 iterations. Third pass would mean the builder can't learn — surface issues to user instead.
 
-Validator gets only the written files, never the builder's reasoning. This forces the builder to produce self-contained output and catches coverage / ID / schema drift.
+Validator gets only the written files, never the builder's reasoning.
 
 ### Information Barrier (`/qa-codegen`)
 
 Prevents tests from mirroring their own expected results:
 
-- **Agent A** receives TC YAMLs with `expected_result` **redacted**. Writes test code with `# ASSERT_HERE: {TC_ID}` markers where assertions belong.
-- **Main context** builds `{ TC_ID → expected_result }` lookup map in memory from `qa/cases/**`. Map never touches disk.
-- **Agent B** receives only the lookup map (no spec file paths, no access to `qa/cases/`). Replaces each `ASSERT_HERE` marker with a real assertion.
+1. **Main context** reads all TCs, builds `{ TC_ID → expected_result }` map in memory. Substitutes `"REDACTED"` for `expected_result` in every TC copy — this is string substitution, not an instruction.
+2. **Agent A** receives TC copies with `expected_result = "REDACTED"`. Writes test code with `# ASSERT_HERE: {TC_ID}` markers.
+3. **Post-write leak check** — main context greps each written file for substrings (≥6 chars) from original expected_result values. Hit = Agent A leaked. Reject + retry (max 2).
+4. **Agent B** receives only the plain text lookup map (no spec paths, no `qa/cases/` access). Replaces each `ASSERT_HERE` marker with a real assertion.
 
-Consequence: Agent A can't copy the expected result into the test. Agent B can't see the test logic. Assertions stay independent of the code that produces the observed behavior.
+Consequence: Agent A cannot copy expected results into tests. Agent B cannot see test logic.
 
 ### Immutability
 
 Once a TC YAML is written, these fields are **immutable**:
 
-- `id`, `title`, `steps`, `expected_result`, `preconditions`, `type`, `platform`, `priority`
+`schema_version`, `id`, `title`, `steps`, `expected_result`, `preconditions`, `type`, `platform`, `priority`, `source_docs`
 
 Only these may be updated on existing TCs:
 
-- `jira_key` (auto-link backfill)
-- `automation_id` (codegen backfill)
-- `automation_status` (`manual` → `automated` after codegen)
-- `deprecated` (retire flow; never deletes)
+- `jira_key` — auto-link backfill
+- `automation_id` — codegen backfill (YAML map keyed by framework)
+- `automation_status` — `manual` → `automated` after codegen
+- `deprecated` — retire flow; never deletes
 
-Rationale: TC IDs are cited in bug reports, TestRail runs, Jira tickets, commit messages. Silent renumbering or rewording breaks cross-references across systems.
+`pre_tool_use.py` hook enforces this when `QABOT_TC_IMMUTABLE=1` is set.
+
+### TC Verbosity
+
+Three formats, controlled by `tc_format` in `qa-config.yml` (default: `B`):
+
+| Format | Steps | expected_result |
+|--------|-------|-----------------|
+| A | omitted | single outcome |
+| B | single prose block | single outcome |
+| C | list with `{step, expected}` per item | overall outcome |
+
+### automation_id Format
+
+YAML map keyed by framework config key. Never a string or comma-separated value:
+
+```yaml
+automation_id:
+  playwright: qa/tests/web/specs/auth/tc-web-1-1-1.spec.ts
+  maestro: qa/tests/mobile/flows/tc-mob-1-1-1.yaml
+```
+
+Multi-framework runs add keys without overwriting existing ones.
 
 ### Config Contract
 
-`qa-config.yml` is read **once** by the `/qa` orchestrator. All resolved values are passed inline to sub-skills via `$VAR` names (see `skills/qa/SKILL.md`). Sub-skills never re-read the config file — this keeps main context flat and makes config changes predictable (next `/qa` run picks them up).
+`qa-config.yml` is read **once** by `/qa`. All resolved values are passed inline to sub-skills. Sub-skills never re-read the config file.
 
-### Canonical TC Schema
+### Coverage Tally
 
-`templates/tc.yml` is the single source of truth. All qa-* skills (qa-plan, qa-sync, qa-adversarial, qa-codegen, qa-testrail) read/write TCs conforming to this shape.
+Coverage is computed inline by the orchestrator after each run — no subagent spawn:
 
-- `automation_status` defaults to `manual` on new TCs.
-- `/qa-codegen` flips it to `automated` and backfills `automation_id`.
-- Optional fields (`tags`, `owner`, `deprecated`, `obsoletes`) — absent is fine; when present, must match declared shape.
+```bash
+find "$CASES" -name "*.yml" | xargs grep -l "schema_version"  # total
+grep -rl "platform: web" "$CASES" --include="*.yml"           # WEB
+grep -rl "automation_status: automated" "$CASES" ...          # automated
+```
+
+Output: `Coverage: {N} TCs — WEB:{w} MOB:{m} BE:{b} NF:{n} | Automated: {a}%`
 
 ## Consumer Project Layout
 
-In adopter projects, everything qa-related nests under `qa/`:
-
 ```
 <project-root>/
-├── .gitignore               # qa-init writes extensive ignore rules here
+├── .gitignore               # qa-init writes qa-specific ignore rules here
 └── qa/
     ├── qa-config.yml        # single config, read once by /qa
     ├── cases/               # TC YAMLs — committed
@@ -109,20 +177,37 @@ In adopter projects, everything qa-related nests under `qa/`:
 
 **Committed by default:** `qa/cases/**`, `qa/tests/**`, `qa/qa-config.yml`, `qa/sync-log.md`, `qa/templates/`, `qa/.env.example`.
 
-**Everything else local.** Reports, discovery artifacts, mapping state, source docs, framework outputs, build dirs.
+**Everything else local.** Reports, discovery artifacts, mapping state, source docs, framework outputs.
 
 ## Non-obvious Invariants
 
 - **Never** modify existing TC YAML fields except the allow-list above.
 - **Never** delete TCs — use `deprecated: true`.
-- **Never** push or auto-merge from a skill — PRs only (interactive or daily mode).
-- **Never** block on Jira unavailability — auto-link is best-effort, always skippable.
+- **Never** push or auto-merge from a skill — PRs only.
+- **Never** block on Jira unavailability — auto-link is best-effort.
 - **Never** test adversarially against a dev server — `adversarial.base_url` must differ from `gen.playwright.base_url`.
 - **Never** leak TC expected results into Agent A's codegen context.
+- **Never** use framework aliases (`web`/`mobile`) in report names — always config key (`playwright`/`maestro`).
+
+## Sub-skill Contracts
+
+| Skill | Receives | Returns |
+|-------|----------|---------|
+| qa-plan | $CASES, $DOCS, $MODELS, $TC_FORMAT, $TC_DOMAINS, $TC_VERBOSITY, $JIRA_URL, $JIRA_KEY, $QABOT_SESSION, $QABOT_SCOPE, $DISCOVERY_REPORT? | TC count, CSV path, report path |
+| qa-codegen | $CASES, $TESTS, $MODELS, $TC_FORMAT, $GEN, $QABOT_SESSION, $QABOT_FRAMEWORK | spec count per framework, backfill count, skipped IDs, report paths |
+| qa-run | $TESTS, $REPORTS, $MODELS, $GEN, $BASE_URL, $QABOT_SESSION, $QABOT_FRAMEWORK | pass rate per framework, fail count, HEAL_REVIEW count, report paths |
+| qa-sync | $CASES, $DOCS, $TESTS, $SYNC_LOG, $MODELS, $TC_FORMAT, $TC_DOMAINS, $GITHUB_REPO, $JIRA_URL, $JIRA_KEY, $GEN, $QABOT_SESSION | new TC count, report path |
+| qa-explore | $GEN, $DOCS | $DISCOVERY_REPORT path or empty |
+| qa-adversarial | $ADV_URL, $CASES, $REPORTS, $TC_FORMAT, $TC_DOMAINS, $QABOT_SESSION | draft TC count |
+| qa-triage | $CASES, $GITHUB_REPO, $JIRA_URL, $JIRA_KEY, $JIRA_QA_STATUS, $MODELS | (ephemeral) |
+| qa-ci | $GITHUB_REPO, $GEN, $TESTS, $REPORTS | workflow file paths |
+| qa-testrail | $CASES, $TC_FORMAT, $TC_DOMAINS, $TESTRAIL.*, $SYNC_LOG | created/updated counts |
+| qa-bug | $REPORTS, $CASES, $GITHUB_REPO, $JIRA_URL, $JIRA_KEY, $MODELS | filed count per destination |
+| qa-retire | $CASES, $TESTS, $SYNC_LOG, $GITHUB_REPO, $MODELS, $GEN | retired count, report path |
 
 ## Adding a Framework
 
-1. Add `gen.<name>:` block to `templates/qa-config.yml` with `enabled`, `root`, and framework-specific fields.
-2. Add `## Framework: <Name>` section to `skills/qa-codegen/SKILL.md` — skip condition, file structure, element/locator rules, `ASSERT_HERE` marker syntax.
-3. Add run command + heal block to `skills/qa-run/SKILL.md`.
-4. The info barrier pattern, TC backfill, and immutability rules all apply unchanged.
+1. Add `gen.<name>:` block to `templates/qa-config.yml`.
+2. Add `## Framework: <Name>` section to `skills/qa-codegen/SKILL.md`.
+3. Add run command block to `skills/qa-run/SKILL.md`.
+4. Info barrier, TC backfill, immutability, and RTK wrapping all apply unchanged.
