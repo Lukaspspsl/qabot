@@ -1,8 +1,9 @@
 # qabot
 
-QA framework for Claude Code covering all stages from analysis and plan, to test case generation, automation scripting and runner. One config file, approval gates between every phase, minimal console output.
+QA framework for Claude Code covering software testing stages from analysis and plan, to test case generation, automation scripting and runner. One config file, human approval gates between every phase. Vibed and always under construction.
 
-**Requires RTK (Rust Token Killer)** — a CLI proxy that compresses tool output for 60–90% token savings. Install from https://github.com/rtk-ai/rtk before using qabot. `/qa` will hard-fail without it.
+**At the moment it requires Rust Token Killer** — a CLI proxy that compresses tool output for 60–90% token savings. Install from https://github.com/rtk-ai/rtk before using qabot. `/qa` will hard-fail without it.
+(may change later)
 
 ## Install
 
@@ -10,25 +11,13 @@ QA framework for Claude Code covering all stages from analysis and plan, to test
 npx qabot-cli init
 ```
 
-Run in your target project. Installs skills into `.claude/skills/`, hooks into `.claude/hooks/`, wires `.claude/settings.json`, and scaffolds `qa/`. No global installs. No cloning required.
+Run in your target project root directory. Installs skills into `.claude/skills/`, hooks into `.claude/hooks/`, wires `.claude/settings.json`, and scaffolds `qa/` folder.
 
 Skills and hooks are **project-local and git-ignored** — each developer runs `npx qabot-cli init` once per project clone. Hook wiring (`.claude/settings.json`) is committed so teammates get it automatically.
 
-Then open Claude Code and run `/qa` to start.
-
-**Pin a version:**
-```bash
-npx qabot-cli@0.1.0 init
-```
-
-Or clone a release:
-```bash
-git clone --branch v0.1.0 https://github.com/Lukaspspsl/qabot.git ~/qabot
-```
-
 ## How to Use
 
-Everything qa-related nests under `qa/` in your project. Open Claude Code and run `/qa` — it checks prerequisites, shows pipeline status, and routes you to the right phase automatically. If `qa/qa-config.yml` is missing, `/qa` auto-routes to `/qa-init`.
+Everything qa-related nests under `qa/` in your project. Open Claude Code and run `/qa` to invoke master orchestrator skill — it checks prerequisites, shows pipeline status, and routes you to the right phase automatically. If `qa/qa-config.yml` is missing, `/qa` auto-routes to `/qa-init`.
 
 ### First Run
 
@@ -74,13 +63,14 @@ Each phase shows a gate before proceeding. Use `[f] full run` from the menu to c
 | `/qa-init` | — | Re-scaffold `qa/` dirs, config, .gitignore (skills + hooks installed by `npx qabot-cli init`) |
 | `/qa-explore` | 0.5 | Browser-based live app discovery before planning |
 | `/qa-plan` | 1 | Generate TCs via Planner + Validator agent loop |
+| `/qa-live` | 1.5 | Buddy for live manual debug session |
 | `/qa-codegen` | 2 | Generate Playwright / Maestro / XCUI automation |
 | `/qa-run` | 3 | Execute tests, analyse failures, auto-heal |
-| `/qa-adversarial` | 2.5 | Edge-case battery against isolated sandbox |
+| `/qa-adversarial` | 2.5 | Edge-case battery against isolated sandbox - TBD!! |
 | `/qa-sync` | 4 | PR sync — new TCs for changed features |
 | `/qa-sync --daily` | 4 | Auto-approve covered PRs, open review PR |
 | `/qa-triage` | — | Score Jira tickets against release signals |
-| `/qa-ci` | — | Write GitHub Actions workflow files |
+| `/qa-ci` | — | Write GitHub Actions workflow files - TBD!! |
 | `/qa-testrail` | 4 | Optional — push TCs to TestRail (requires `testrail.enabled` + `.env` creds) |
 | `/qa-bug` | post-run | File failures from run-analysis / adversarial draft as Jira or GitHub issues |
 | `/qa-retire` | — | Mark TCs `deprecated: true` for removed features (PR scan or manual) |
@@ -98,6 +88,8 @@ See `docs/ARCHITECTURE.md` for full details. Key points:
 
 ### TC Schema (canonical)
 
+Framework is set so that the test case ID is immutable and ideally carries through the whole process. This way it should be free of friction and conflict.
+
 `templates/tc.yml` + `docs/TC-SCHEMA.md`. Key fields:
 
 - `schema_version: 1`
@@ -108,7 +100,7 @@ See `docs/ARCHITECTURE.md` for full details. Key points:
 ### Agent Patterns
 
 **Planner + Validator loop** (`/qa-plan`):
-Planner agent writes TCs from RTK-injected docs. Validator checks quality + schema. Max 2 iterations.
+Planner agent writes TCs from RTK-injected docs. Validator checks quality (based on skill wording) + schema. Max 2 iterations.
 
 **Info Barrier** (`/qa-codegen`):
 - Main context replaces `expected_result` with `"REDACTED"` (string substitution) before Agent A spawn
@@ -149,7 +141,7 @@ The bundled `pre_tool_use.py` hook enforces the Agent A/B info barrier and block
 
 | Var | Purpose | Example |
 |-----|---------|---------|
-| `QABOT_BLOCKED_URLS` | Comma-separated regex; block WebFetch/curl to these URLs | `https?://api\.acme\.com,https?://.*\.prod\.` |
+| `QABOT_BLOCKED_URLS` | Comma-separated regex; block WebFetch/curl to these URLs so you avoid prod env. | `https?://api\.acme\.com,https?://.*\.prod\.` |
 | `QABOT_BLOCKED_BASH` | Comma-separated regex; override default destructive-bash blocklist | `rm\s+-rf\s+/,DROP\s+TABLE` |
 | `QABOT_WORKSPACE` | Absolute path; warn on writes outside this root | `/Users/me/proj/qa` |
 | `QABOT_AGENT_ROLE` | `agent-a` or `agent-b`; enforces info-barrier during codegen | `agent-a` |
@@ -158,10 +150,10 @@ The bundled `pre_tool_use.py` hook enforces the Agent A/B info barrier and block
 
 `hooks/send_event.py` exists for opt-in observability but is **not wired** by default. To enable:
 
-1. Run a local obs server (defaults to `http://localhost:4000`); override with `OBS_SERVER_URL`.
+1. Run a local obs server (script in folder `/obs/start-obs.sh` - it defaults to `http://localhost:4000`); override with `OBS_SERVER_URL`.
 2. Add a `PostToolUse` entry calling `python3 .claude/hooks/send_event.py --event-type tool_use` in `.claude/settings.json`.
 
-### Adding a New Framework
+### Adding a New Automation Framework
 
 1. Add `gen.<name>:` block to `templates/qa-config.yml`
 2. Add `## Framework: <Name>` section to `skills/qa-codegen/SKILL.md`
