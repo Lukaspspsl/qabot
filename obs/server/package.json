@@ -1,0 +1,8 @@
+{
+  "name": "qabot-obs-server",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "bun run index.ts"
+  }
+}
