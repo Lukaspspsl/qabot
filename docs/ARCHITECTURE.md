@@ -33,6 +33,7 @@ Lightweight QA framework. Main context never reads TC bodies or spec code — on
        /qa-triage     (before QA cycle — score Jira tickets)
        /qa-ci         (one-time — write GitHub Actions workflows)
        /qa-bug        (failure → Jira/GitHub issue)
+       /qa-live       (standalone — interactive manual testing session, any time)
 ```
 
 Each phase has a human approval gate before the next runs. `[f] full run` from the menu chains Plan → Codegen → Run with one confirmation per step.
@@ -235,6 +236,7 @@ This copies skills to `.claude/skills/`, hooks to `.claude/hooks/`, and wires `.
 | qa-testrail | $CASES, $TC_FORMAT, $TC_DOMAINS, $TESTRAIL.*, $SYNC_LOG | created/updated counts |
 | qa-bug | $REPORTS, $CASES, $GITHUB_REPO, $JIRA_URL, $JIRA_KEY, $MODELS | filed count per destination |
 | qa-retire | $CASES, $TESTS, $SYNC_LOG, $GITHUB_REPO, $MODELS, $GEN | retired count, report path |
+| qa-live | $CASES, $REPORTS, $MODELS, $JIRA_URL, $JIRA_KEY, $LIVE_* config | live-session-{ts}.md report |
 
 ## Adding a Framework
 
