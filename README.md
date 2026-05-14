@@ -1,6 +1,8 @@
 # qabot
 
-QA framework for Claude Code covering all the stages from analysis and plan, to test case generation, automation scripting and runner. One config file, approval gates between every phase, minimal console output.
+QA framework for Claude Code covering all stages from analysis and plan, to test case generation, automation scripting and runner. One config file, approval gates between every phase, minimal console output.
+
+**Requires RTK (Rust Token Killer)** — a CLI proxy that compresses tool output for 60–90% token savings. Install from https://github.com/rtk-ai/rtk before using qabot. `/qa` will hard-fail without it.
 
 ## Install
 
@@ -8,7 +10,7 @@ QA framework for Claude Code covering all the stages from analysis and plan, to 
 npx qabot-cli init
 ```
 
-Run this in your target project. It installs skills into `.claude/skills/`, hooks into `.claude/hooks/`, wires `.claude/settings.json`, and scaffolds `qa/`. No global installs. No cloning required.
+Run in your target project. Installs skills into `.claude/skills/`, hooks into `.claude/hooks/`, wires `.claude/settings.json`, and scaffolds `qa/`. No global installs. No cloning required.
 
 Skills and hooks are **project-local and git-ignored** — each developer runs `npx qabot-cli init` once per project clone. Hook wiring (`.claude/settings.json`) is committed so teammates get it automatically.
 
@@ -19,40 +21,14 @@ Then open Claude Code and run `/qa` to start.
 npx qabot-cli@0.1.0 init
 ```
 
-Pin a release:
-
+Or clone a release:
 ```bash
 git clone --branch v0.1.0 https://github.com/Lukaspspsl/qabot.git ~/qabot
 ```
 
-After install, `/qa` and all sub-skills (`/qa-plan`, `/qa-codegen`, `/qa-run`, `/qa-sync`, `/qa-triage`, `/qa-ci`, `/qa-explore`, `/qa-adversarial`, `/qa-bug`, `/qa-retire`, `/qa-testrail`, `/qa-init`) are available in this project.
-
-**Prerequisites:** RTK (Rust Token Killer) is required. Install from https://github.com/rtk-ai/rtk before using qabot. `/qa` will hard-fail without it.
-
-### Hook configuration
-
-The bundled `pre_tool_use.py` hook enforces the Agent A/B info barrier and blocks destructive patterns. It reads optional env vars:
-
-| Var | Purpose | Example |
-|-----|---------|---------|
-| `QABOT_BLOCKED_URLS` | Comma-separated regex; block WebFetch/curl to these URLs | `https?://api\.acme\.com,https?://.*\.prod\.` |
-| `QABOT_BLOCKED_BASH` | Comma-separated regex; override default destructive-bash blocklist | `rm\s+-rf\s+/,DROP\s+TABLE` |
-| `QABOT_WORKSPACE` | Absolute path; warn on writes outside this root | `/Users/me/proj/qa` |
-| `QABOT_AGENT_ROLE` | `agent-a` or `agent-b`; enforces info-barrier during codegen | `agent-a` |
-
-### Observability layer (off by default)
-
-`hooks/send_event.py` exists for opt-in observability but is **not wired** by default. To enable:
-
-1. Run a local obs server (defaults to `http://localhost:4000`); override with `OBS_SERVER_URL`.
-2. Add a `PostToolUse` entry calling `python3 .claude/hooks/send_event.py --event-type tool_use` in `.claude/settings.json`.
-
-
 ## How to Use
 
-Everything qa-related nests under `qa/` in your project. Only `qa/cases/`, `qa/tests/`, `qa/qa-config.yml`, `qa/sync-log.md`, `qa/templates/` are committed by default — reports, .env, discovery artifacts, and testrail state are local-only.
-
-The orchestrator checks prerequisites, shows pipeline status, and routes you to the right phase automatically. If `qa/qa-config.yml` is missing, `/qa` auto-routes to `/qa-init`.
+Everything qa-related nests under `qa/` in your project. Open Claude Code and run `/qa` — it checks prerequisites, shows pipeline status, and routes you to the right phase automatically. If `qa/qa-config.yml` is missing, `/qa` auto-routes to `/qa-init`.
 
 ### First Run
 
@@ -75,8 +51,6 @@ gen:
 ```
 
 Run `/qa` — it auto-routes to `/qa-plan` if no test cases exist yet.
-
-`/qa` is main orchestrator, use it to run dedicated skills.
 
 ### Phase Flow
 
@@ -154,20 +128,38 @@ Fixes broken locators, timing, navigation. Tags changes with confidence score. `
 │   ├── skills/qa*/      # qabot skills — git-ignored, reinstall via --from
 │   └── hooks/           # qabot hooks — git-ignored, reinstall via --from
 └── qa/
-    ├── tests/           # COMMITTED — specs/flows (only committed qa/ subdir)
+    ├── tests/           # automation scripts — committed by default
     │   ├── web/         # Playwright
     │   ├── mobile/      # Maestro
     │   └── ios/         # XCUI
-    ├── qa-config.yml    # local — git-ignored by default
-    ├── cases/           # local — TC YAMLs, git-ignored by default
-    ├── docs/            # local — source docs for planning
-    ├── reports/         # local — plan/codegen/run-analysis reports
-    ├── sync-log.md      # local — sync state
-    ├── .context/        # local — explore + adversarial artifacts
-    └── .env             # local — creds, never committed
+    ├── qa-config.yml    # git-ignored by default
+    ├── cases/           # TC YAMLs — git-ignored by default
+    ├── docs/            # source docs for planning — git-ignored by default
+    ├── reports/         # plan/codegen/run-analysis reports — git-ignored by default
+    ├── sync-log.md      # sync state — git-ignored by default
+    ├── .context/        # explore + adversarial artifacts — git-ignored by default
+    └── .env             # creds, never committed
 ```
 
-Everything under `qa/` is git-ignored by default except `qa/tests/`. To commit cases, config, or docs, remove the relevant lines from `.gitignore`.
+Only `qa/tests/` is committed by default. Everything else under `qa/` is git-ignored. To commit cases, config, docs, or reports, remove the relevant lines from `.gitignore`.
+
+### Hook Configuration
+
+The bundled `pre_tool_use.py` hook enforces the Agent A/B info barrier and blocks destructive patterns. It reads optional env vars:
+
+| Var | Purpose | Example |
+|-----|---------|---------|
+| `QABOT_BLOCKED_URLS` | Comma-separated regex; block WebFetch/curl to these URLs | `https?://api\.acme\.com,https?://.*\.prod\.` |
+| `QABOT_BLOCKED_BASH` | Comma-separated regex; override default destructive-bash blocklist | `rm\s+-rf\s+/,DROP\s+TABLE` |
+| `QABOT_WORKSPACE` | Absolute path; warn on writes outside this root | `/Users/me/proj/qa` |
+| `QABOT_AGENT_ROLE` | `agent-a` or `agent-b`; enforces info-barrier during codegen | `agent-a` |
+
+### Observability Layer (off by default)
+
+`hooks/send_event.py` exists for opt-in observability but is **not wired** by default. To enable:
+
+1. Run a local obs server (defaults to `http://localhost:4000`); override with `OBS_SERVER_URL`.
+2. Add a `PostToolUse` entry calling `python3 .claude/hooks/send_event.py --event-type tool_use` in `.claude/settings.json`.
 
 ### Adding a New Framework
 
