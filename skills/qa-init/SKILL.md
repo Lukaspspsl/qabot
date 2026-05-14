@@ -75,6 +75,10 @@ See docs/TC-SCHEMA.md and docs/CONFIG-SCHEMA.md for field reference.
 
 ```bash
 cat > qa/.env.example <<'EOF'
+# Jira (required for screenshot attachment via /qa-bug REST upload)
+JIRA_USER=""        # your Atlassian email
+JIRA_API_KEY=""     # Atlassian API token — https://id.atlassian.com/manage-profile/security/api-tokens
+
 # TestRail (only if testrail.enabled: true in qa-config.yml)
 TR_USER=""
 TR_API_KEY=""
@@ -215,6 +219,7 @@ qa-init complete.
   .gitignore                   [updated | already installed]
 
 Next: fill qa/qa-config.yml required fields, then run /qa.
+Fill qa/.env with JIRA_USER + JIRA_API_KEY for screenshot uploads via /qa-bug.
 See docs/TC-SCHEMA.md and docs/CONFIG-SCHEMA.md for field reference.
 ```
 

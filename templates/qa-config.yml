@@ -4,6 +4,7 @@ project:
   jira:
     url: ""                    # https://myorg.atlassian.net
     project_key: ""            # PROJ
+    cloud_id: ""               # Atlassian cloud ID — find at: $JIRA_URL/_edge/tenant_info
     ready_for_qa_status: "Ready for QA"
 
 tc_format: B               # A | B | C — TC verbosity. A=title+result only, B=single step block (default), C=per-step with individual results
@@ -92,6 +93,19 @@ testrail:
   suite_id: 0                  # optional, 0 for single-suite projects
   # auth lives in a local .env (never committed):
   #   TR_USER, TR_API_KEY, TR_PASSWORD (required for session-auth instances)
+
+live_session:
+  tools:
+    burp:
+      enabled: false
+      mcp_server: "burp"       # MCP server name as configured in Claude's MCP settings
+    devtools:
+      enabled: false
+      mcp_server: "io.github.ChromeDevTools/chrome-devtools-mcp"
+    jira:
+      comment_on_verdict: true  # add pass/fail comment to linked Jira ticket after each verdict
+  default_ordering: priority    # priority | file | random
+  report_dir: ""                # empty → inherits paths.reports
 
 models:
   default: claude-sonnet-4-6

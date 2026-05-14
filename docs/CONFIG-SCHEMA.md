@@ -10,7 +10,8 @@ project:
   github_repo: ""       # org/repo — used by qa-sync, qa-triage, qa-ci
   jira:
     url: ""             # https://myorg.atlassian.net
-    project_key: ""     # PROJ — used for auto-linking and triage
+    project_key: ""     # PROJ — used for auto-linking, triage, and /qa-bug
+    cloud_id: ""        # Atlassian cloud ID — find at: $JIRA_URL/_edge/tenant_info (required for /qa-bug)
     ready_for_qa_status: "Ready for QA"   # Jira status that signals ready for testing
 ```
 
