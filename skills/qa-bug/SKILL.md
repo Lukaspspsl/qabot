@@ -68,8 +68,9 @@ Standard sequence (skip any already answered by initial description):
 2. **What actually happened?** (one sentence — observed behavior)
 3. **Reproduction steps?** (numbered or short prose)
 4. **Severity?** `High` / `Medium` / `Low`
+5. **Parent issue / story?** Jira key or URL (e.g. `PROJ-123` or `https://org.atlassian.net/browse/PROJ-123`). Reply `none` to skip. — always asked, does not count toward the 4-question cap.
 
-Never exceed 4 questions. If user is terse, infer the rest from capture + description.
+Never exceed 4 questions from steps 1–4. If terse, infer rest from capture + description. Step 5 always asked last.
 
 ### Step I.3 — Silent Analysis
 
@@ -108,10 +109,12 @@ Description:
   - OS: <if known, else omit>
   - Domain: <domain>
 
+Parent:   <PARENT-KEY or "none">
+
 Screenshot: qa/.context/bug-{ts}.png (will attach)
 
   [y] file ticket
-  [e] edit field — title|description|priority|domain
+  [e] edit field — title|description|priority|domain|parent
   [c] cancel
 ```
 
@@ -132,7 +135,12 @@ createJiraIssue(
 ```
 Do **not** set sprint, fixVersion, components, or assignee. One label only.
 
-If parent story key offered by user (optional question on `[e]`): after ticket created, call `createIssueLink(type: "Relates", inwardIssue: <new key>, outwardIssue: <parent>)`.
+**Parent link** (mandatory step — proactive, not optional):
+If user provided a parent key/URL in Step I.2 question 5 (anything other than `none`):
+1. Normalize input — strip URL prefix to get bare key (e.g. `PROJ-123`).
+2. After ticket created, call `createIssueLink(type: "Relates", inwardIssue: <new-key>, outwardIssue: <parent-key>)`.
+3. Append parent reference to description body as `**Parent:** [<parent-key>]($JIRA_URL/browse/<parent-key>)` so the link renders inline in the ticket.
+4. If `createIssueLink` fails: surface error but keep ticket. Print manual link command for user.
 
 **Screenshot attachment:**
 Read `JIRA_API_KEY` and `JIRA_EMAIL` from `qa/.env`. If both present:
@@ -213,13 +221,22 @@ Found N bugs:
 
 Inspect = full preview in Interactive Step I.4 format.
 
-### Step B.3 — Create Tickets
+### Step B.3 — Parent Link Prompt
 
-Same call shape as Interactive Step I.5 — per record. Title becomes `[<Domain>] <title>`. Body uses Interactive Step I.4 format. Add `**TC:** <tc_id>` line above Expected if linked.
+Before creating tickets, ask once:
+```
+Parent issue / story for these bugs? (applied to all)
+  Jira key or URL, or `none` to skip:
+```
+Cache answer for the batch. Same normalization + `createIssueLink` flow as Interactive Step I.5.
+
+### Step B.4 — Create Tickets
+
+Same call shape as Interactive Step I.5 — per record. Title becomes `[<Domain>] <title>`. Priority is plain English (`High` / `Medium` / `Low`). Body uses Interactive Step I.4 format. Add `**TC:** <tc_id>` line above Expected if linked. If parent provided, link every ticket and embed `**Parent:**` line in body.
 
 Screenshot attachment via curl as in Interactive mode, using each record's `screenshot_path` if present.
 
-### Step B.4 — Backfill
+### Step B.5 — Backfill
 
 For each bug with a `tc_id`:
 - Append created issue key(s) to source `run-analysis-*.md` under a `## Filed Tickets` section.
@@ -227,7 +244,7 @@ For each bug with a `tc_id`:
 
 If source was `.context/ui-test-bugs-draft.yml`: delete the draft after successful filing (adversarial completion signal).
 
-### Step B.5 — Summary
+### Step B.6 — Summary
 
 ```
 Filed:
@@ -246,6 +263,8 @@ Skipped: 1 flaky
 - Never embed secrets, tokens, cookies, emails, or auth headers in issue bodies.
 - Never fill sprint, fixVersion, components, or assignee.
 - One label only: lowercase domain.
+- Priority is plain English: `High` / `Medium` / `Low`. Never use P1/P2/P3.
+- Parent link is **always** asked (Interactive: question 5; Batch: once per run). On any answer other than `none`, normalize to bare key, call `createIssueLink`, and embed `**Parent:**` link in description body.
 - **Additional Insight bullets are observations and evidence only — no suggested fixes, no confidence levels, no speculation as fact.**
 - Max 4 questions in Interactive mode.
 - All credentials (`JIRA_API_KEY`, `JIRA_EMAIL`, `GITHUB_TOKEN`) read from `qa/.env` — never hardcoded, never printed, never embedded in tickets.
