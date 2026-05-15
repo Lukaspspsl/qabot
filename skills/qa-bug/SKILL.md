@@ -1,6 +1,9 @@
-# /qa-bug — Failure → Ticket
+# /qa-bug — Bug Capture → Ticket
 
-Turns `qa/reports/run-analysis-*.md` failures (and optional `.context/ui-test-bugs-draft.yml` adversarial findings) into Jira issues or GitHub issues. Human confirms every ticket unless `[a]ll` batch mode selected.
+Two modes:
+
+- **Interactive** (default): tester reports one bug live. Capture via Chrome DevTools MCP, ask up to 4 sequential questions, confirm, file Jira ticket with screenshot.
+- **Batch**: when `$REPORTS/run-analysis-*.md` or `.context/ui-test-bugs-draft.yml` exist — convert failures to tickets. Human confirms every ticket unless `[a]ll`.
 
 Receives from orchestrator: `$REPORTS`, `$CASES`, `$GITHUB_REPO`, `$JIRA_URL`, `$JIRA_KEY`, `$MODELS`
 
@@ -10,134 +13,221 @@ If `qa/qa-config.yml` not found:
 ```
 qa/qa-config.yml not found.
 Run /qa-init to scaffold (full setup) or /qa (auto-routes to init if missing).
-
-Quick start — create qa/qa-config.yml:
-  project:
-    name: "My App"
-  gen:
-    playwright:
-      enabled: true
-      base_url: "http://localhost:3000"
-
-Then re-run this skill.
 ```
 Stop. Do not proceed.
 
-## Step 0 — Source Selection
+## Step 0 — Mode Selection
 
-Scan inputs:
-- Latest `$REPORTS/run-analysis-*.md` (by mtime)
-- `.context/ui-test-bugs-draft.yml` (if present — from `/qa-adversarial`)
+Detect inputs:
+- `recent_run_analysis` = newest `$REPORTS/run-analysis-*.md` mtime within last 24h
+- `adversarial_draft` = `.context/ui-test-bugs-draft.yml` present
 
-If neither exists: stop with `No failures to report. Run /qa-run or /qa-adversarial first.`
+Routing:
+- User invoked with a free-text description (e.g. `/qa-bug login button frozen`) → **Interactive** mode, seed initial summary from description.
+- Neither input present, no description → **Interactive** mode.
+- Either input present, no description → ask:
+  ```
+  Bug source:
+    [i] interactive — capture a new bug now
+    [b] batch      — file tickets from {N} parsed failures
+  ```
 
-Ask destination:
+Ask destination once (cached for session):
 ```
 Create tickets in:
   [j] Jira   (project $JIRA_KEY)       — requires Atlassian MCP
   [g] GitHub (repo $GITHUB_REPO)       — requires gh auth
-  [b] both
+  [x] both
 ```
 
-## Step 1 — Parse Failures (Builder)
+---
 
-Spawn builder subagent with `$MODELS.default`.
+## Interactive Mode
 
-**Input:** run-analysis markdown + optional adversarial draft YAML.
+### Step I.1 — Capture (parallel, silent)
 
-**Output:** list of bug records, one per failure. Never write to disk — return structured list to main context.
+In one batch, call Chrome DevTools MCP tools in parallel:
+- `list_pages` — active tab URL, title
+- `take_screenshot` — save to `qa/.context/bug-{ts}.png` (overwrite each run)
+- `list_console_messages` — last 50, filter `error`/`warning`
+- `list_network_requests` — last 50, filter status ≥ 400
 
-Record shape:
-```yaml
-tc_id: "TC-WEB-1.2.3"          # if failure traces to an existing TC, else empty
-title: ""                       # concise, action-oriented — max 80 chars
-summary: ""                     # one paragraph — what broke, what was expected
-steps_to_reproduce: []          # imperative
-actual: ""                      # observed
-expected: ""                    # from TC expected_result or adversarial assertion
-severity: "P2"                  # P1|P2|P3 — inherit from TC priority if linked, else infer
-evidence:
-  log_excerpt: ""               # trimmed stack / error lines (≤20 lines)
-  screenshot_path: ""           # if present in report
-  spec_path: ""                 # failing spec file
-labels: ["qa-auto", "web"]      # platform tag + source tag (qa-run|qa-adversarial)
+If Chrome DevTools MCP unavailable: continue without capture, mark `evidence: none`.
+
+**Redact before storing or sending anywhere:**
+- HTTP headers: `Authorization`, `Cookie`, `Set-Cookie`, `X-Api-Key`, `X-Auth-Token` → `[REDACTED]`
+- Request/response bodies: any field matching `password|token|secret|api[_-]?key|bearer` → `[REDACTED]`
+- URL query params: `token|key|secret|password` → `[REDACTED]`
+
+### Step I.2 — Sequential Questions (max 4)
+
+Ask **one question at a time**. Wait for answer before next. Stop early if enough context.
+
+Standard sequence (skip any already answered by initial description):
+1. **What did you expect to happen?** (one sentence)
+2. **What actually happened?** (one sentence — observed behavior)
+3. **Reproduction steps?** (numbered or short prose)
+4. **Severity?** `High` / `Medium` / `Low`
+
+Never exceed 4 questions. If user is terse, infer the rest from capture + description.
+
+### Step I.3 — Silent Analysis
+
+In main context, derive:
+- **Platform** — from `list_pages` URL (web app domain → `Web`; mobile schema → `Mobile`; else `Web`)
+- **Domain** — single lowercase tag from URL path or description (e.g. `auth`, `checkout`, `profile`, `dashboard`). Match against existing TC domains in `$CASES` if any.
+- **Severity → Priority** map: `High → High`, `Medium → Medium`, `Low → Low`
+- **Build/OS** — from `list_pages` user-agent if available, else omit
+- **Evidence bullets** (3–4): observations only from console errors, failed network calls, screenshot context. **No fixes. No confidence scores. No speculation as fact.** Each bullet is a thing seen, not a thing guessed.
+
+### Step I.4 — Confirm Gate
+
+Show preview:
+```
+Title:    [<Domain>] <one-liner>
+Priority: <High|Medium|Low>
+Labels:   <domain>
+
+Description:
+  <plain-language paragraph: what happened, when, where>
+
+  **Expected:** <expected>
+
+  **Steps to Reproduce:**
+  1. ...
+  2. ...
+
+  **Additional Insight:**
+  - <observation>
+  - <observation>
+  - <observation>
+
+  **Environment:**
+  - Platform: <Web|Mobile>
+  - Build: <if known, else omit>
+  - OS: <if known, else omit>
+  - Domain: <domain>
+
+Screenshot: qa/.context/bug-{ts}.png (will attach)
+
+  [y] file ticket
+  [e] edit field — title|description|priority|domain
+  [c] cancel
 ```
 
-**Quality rules:**
-- Collapse duplicate failures (same spec + same assertion) into one record.
-- Flaky-tagged failures (from `/qa-run` analysis) → skip unless user overrides.
-- If multiple TCs fail for the same root cause, reference them all in `summary`; pick the first as `tc_id`.
+Loop on `[e]` until `[y]` or `[c]`.
 
-## Step 2 — Confirm Gate (Validator pattern)
+### Step I.5 — Create Ticket
 
-Show compact list:
-```
-Found N bugs:
-  1. [P1] TC-WEB-1.2.3 — Checkout total miscalculates tax for EU VAT
-  2. [P2] TC-WEB-2.1.1 — Password reset email not sent for SSO users
-  3. [P3] (no TC)      — Footer link to /legal returns 404
-Confirm:
-  [1..N]  inspect single
-  [a]ll   create all
-  [s]kip N,N  exclude by number
-  [c]ancel
-```
-
-Inspect shows full record. Confirmation creates tickets.
-
-## Step 3 — Create Tickets
-
-### Jira (`[j]` or `[b]`)
-
-For each confirmed record:
+**Jira** (`[j]` or `[x]`):
 ```
 createJiraIssue(
   projectKey: $JIRA_KEY,
   issueType: "Bug",
-  summary: title,
-  description: """
-    {summary}
-
-    **TC:** {tc_id or "—"}
-    **Severity:** {severity}
-
-    **Steps to reproduce:**
-    {numbered steps}
-
-    **Expected:** {expected}
-    **Actual:** {actual}
-
-    **Spec:** {spec_path}
-    **Log:**
-    ```
-    {log_excerpt}
-    ```
-    """,
-  labels: labels
+  summary: "[<Domain>] <one-liner>",
+  description: <markdown body from Step I.4>,
+  priority: <High|Medium|Low>,
+  labels: ["<domain>"]
 )
 ```
+Do **not** set sprint, fixVersion, components, or assignee. One label only.
 
-Capture returned issue key. If MCP unavailable: print ready-to-paste markdown block, continue to GitHub.
+If parent story key offered by user (optional question on `[e]`): after ticket created, call `createIssueLink(type: "Relates", inwardIssue: <new key>, outwardIssue: <parent>)`.
 
-### GitHub (`[g]` or `[b]`)
+**Screenshot attachment:**
+Read `JIRA_API_KEY` and `JIRA_EMAIL` from `qa/.env`. If both present:
+```bash
+curl -s -u "$JIRA_EMAIL:$JIRA_API_KEY" \
+  -X POST \
+  -H "X-Atlassian-Token: no-check" \
+  -F "file=@qa/.context/bug-{ts}.png" \
+  "$JIRA_URL/rest/api/3/issue/<new-key>/attachments"
+```
+If either missing: skip attachment silently. Never print key/email.
 
+**GitHub** (`[g]` or `[x]`):
 ```bash
 gh issue create \
   --repo $GITHUB_REPO \
-  --title "[QA] {title}" \
-  --label "bug,qa-auto" \
+  --title "[<Domain>] <one-liner>" \
+  --label "bug,<domain>" \
   --body-file <(printf '%s' "$MARKDOWN_BODY")
 ```
+Screenshot attachment via GH: include as image in body using uploaded URL only if user already has the image hosted; otherwise reference path.
 
-## Step 4 — Backfill
+### Step I.6 — Summary
+
+```
+Filed:
+  Jira:   PROJ-123  (screenshot attached)
+  GitHub: #42
+```
+
+Return to orchestrator: 1 filed.
+
+---
+
+## Batch Mode
+
+### Step B.1 — Parse Failures (builder subagent)
+
+Spawn builder with `$MODELS.default`.
+
+**Input:** newest `run-analysis-*.md` + optional `.context/ui-test-bugs-draft.yml`.
+
+**Output:** list of bug records, returned to main context (no disk writes):
+```yaml
+tc_id: "TC-WEB-1.2.3"      # if failure traces to a TC, else empty
+domain: "auth"             # lowercase, single tag — from TC or inferred
+title: ""                  # one-liner — max 80 chars, NO domain prefix (added later)
+summary: ""                # plain-language paragraph
+expected: ""               # from TC expected_result or adversarial assertion
+actual: ""                 # observed
+steps: []                  # imperative, numbered
+priority: "Medium"         # High|Medium|Low — map from TC priority or infer
+insight: []                # 3–4 observation bullets — no fixes
+spec_path: ""              # failing spec file
+log_excerpt: ""            # ≤20 lines
+screenshot_path: ""        # if present in report
+platform: "Web"            # Web|Mobile
+```
+
+**Quality rules:**
+- Collapse duplicates (same spec + same assertion) into one record.
+- Skip flaky-tagged failures unless user overrides.
+- If multiple TCs share a root cause, list all in `summary`; first becomes `tc_id`.
+- Strip any captured secrets from logs before returning (`Authorization`, `Cookie`, tokens, keys).
+
+### Step B.2 — Confirm Gate
+
+```
+Found N bugs:
+  1. [High]   [auth]     Password reset email not sent for SSO users
+  2. [Medium] [checkout] Tax miscalculates for EU VAT
+  3. [Low]    [legal]    Footer link to /legal returns 404
+  [1..N]  inspect single
+  [a]ll   file all
+  [s]kip N,N
+  [c]ancel
+```
+
+Inspect = full preview in Interactive Step I.4 format.
+
+### Step B.3 — Create Tickets
+
+Same call shape as Interactive Step I.5 — per record. Title becomes `[<Domain>] <title>`. Body uses Interactive Step I.4 format. Add `**TC:** <tc_id>` line above Expected if linked.
+
+Screenshot attachment via curl as in Interactive mode, using each record's `screenshot_path` if present.
+
+### Step B.4 — Backfill
 
 For each bug with a `tc_id`:
-- Append created issue key(s) to `$REPORTS/run-analysis-<timestamp>.md` under a `## Filed Tickets` section.
-- Do **not** modify TC YAML `jira_key` — that field is reserved for the source TC's linked Jira ticket, not the bug ticket.
+- Append created issue key(s) to source `run-analysis-*.md` under a `## Filed Tickets` section.
+- Do **not** modify TC YAML `jira_key` — that field is reserved for the TC's linked story, not the bug ticket.
 
-If source was `.context/ui-test-bugs-draft.yml`: delete the draft after successful filing (adversarial completion signal per `/qa` orchestrator status detection).
+If source was `.context/ui-test-bugs-draft.yml`: delete the draft after successful filing (adversarial completion signal).
 
-## Step 5 — Summary
+### Step B.5 — Summary
 
 ```
 Filed:
@@ -146,13 +236,18 @@ Filed:
 Skipped: 1 flaky
 ```
 
-Return to orchestrator: filed count per destination.
+---
 
 ## Rules
 
-- Never create a ticket without user confirmation (single-item or `[a]ll` batch).
+- Never create a ticket without user confirmation (single-item or `[a]ll`).
 - Never transition existing tickets — creation only. Use `/qa-triage` for transitions.
-- Never attach full logs — trim to ≤20 lines of signal. Link to report path instead.
-- Never embed secrets from `.env` in issue bodies.
-- If MCP / gh auth missing: print the markdown body, do not stall the pipeline.
-- Dedup by (spec_path + assertion_signature) within one run; across runs, assume user manages.
+- Never attach full logs — trim to ≤20 lines of signal.
+- Never embed secrets, tokens, cookies, emails, or auth headers in issue bodies.
+- Never fill sprint, fixVersion, components, or assignee.
+- One label only: lowercase domain.
+- **Additional Insight bullets are observations and evidence only — no suggested fixes, no confidence levels, no speculation as fact.**
+- Max 4 questions in Interactive mode.
+- All credentials (`JIRA_API_KEY`, `JIRA_EMAIL`, `GITHUB_TOKEN`) read from `qa/.env` — never hardcoded, never printed, never embedded in tickets.
+- If MCP / gh auth / .env creds missing: print the markdown body for manual paste, do not stall the pipeline.
+- Dedup by (spec_path + assertion_signature) within one run.
